@@ -1,0 +1,14 @@
+{
+  "permissions": {
+    "allow": [
+      
+    ]
+  },
+  "enableAllProjectMcpServers": true,
+  "enabledMcpjsonServers": [
+    "context7"
+  ],
+  "enabledPlugins": {
+    "oh-my-claudecode@omc": true
+  }
+}

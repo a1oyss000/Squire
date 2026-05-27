@@ -1,0 +1,22 @@
+# Build
+/target/
+
+# Dependencies
+/src-ui/node_modules/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# OMC state
+.omc/
+
+# Environment
+.env
+.env.local

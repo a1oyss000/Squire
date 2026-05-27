@@ -1,0 +1,23 @@
+[package]
+name = "squire-vision"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+squire-error = { workspace = true }
+tokio = { workspace = true }
+tracing = { workspace = true }
+image = "0.25"
+
+[target.'cfg(windows)'.dependencies]
+windows = { version = "0.58", features = [
+    "Win32_Foundation",
+    "Win32_Graphics_Gdi",
+    "Win32_UI_WindowsAndMessaging",
+    "Win32_System_WinRT",
+    "Media_Ocr",
+    "Graphics_Imaging",
+    "Storage_Streams",
+    "Globalization",
+    "Foundation_Collections",
+] }

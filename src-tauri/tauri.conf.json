@@ -1,0 +1,32 @@
+{
+  "$schema": "https://raw.githubusercontent.com/nicegui/nicegui/main/tauri-v2-schema.json",
+  "productName": "Squire",
+  "version": "0.1.0",
+  "identifier": "com.squire.app",
+  "build": {
+    "frontendDist": "../src-ui/dist",
+    "devUrl": "http://localhost:5173",
+    "beforeDevCommand": "cd ../src-ui && npm run dev",
+    "beforeBuildCommand": "cd ../src-ui && npm run build"
+  },
+  "app": {
+    "windows": [
+      {
+        "title": "Squire",
+        "width": 1024,
+        "height": 768,
+        "resizable": true
+      }
+    ],
+    "security": {
+      "csp": null
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": "all",
+    "icon": [
+      "icons/icon.ico"
+    ]
+  }
+}

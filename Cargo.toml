@@ -1,0 +1,30 @@
+[workspace]
+members = [
+    "crates/squire-error",
+    "crates/squire-vision",
+    "crates/squire-input",
+    "crates/squire-engine",
+    "src-tauri",
+]
+resolver = "2"
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+authors = ["Squire Contributors"]
+
+[workspace.dependencies]
+squire-error = { path = "crates/squire-error" }
+squire-vision = { path = "crates/squire-vision" }
+squire-input = { path = "crates/squire-input" }
+squire-engine = { path = "crates/squire-engine" }
+thiserror = "2"
+anyhow = "1"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+serde_yaml = "0.9"
+tokio = { version = "1", features = ["full"] }
+tokio-util = { version = "0.7", features = ["rt"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }

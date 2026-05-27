@@ -1,0 +1,49 @@
+name: NIKKE Daily Mail
+enabled: true
+description: Collect daily mail rewards in NIKKE
+
+steps:
+  - action:
+      type: click
+    target:
+      type: template
+      path: templates/nikke/mail_button.png
+      threshold: 0.8
+    timeout_ms: 10000
+    on_fail: retry
+
+  - action:
+      type: wait
+      ms: 1500
+    target:
+      type: coordinate
+      x: 0
+      y: 0
+    timeout_ms: 2000
+
+  - action:
+      type: click
+    target:
+      type: template
+      path: templates/nikke/collect_all.png
+      threshold: 0.8
+    timeout_ms: 10000
+    on_fail: skip
+
+  - action:
+      type: click
+    target:
+      type: template
+      path: templates/nikke/confirm.png
+      threshold: 0.75
+    timeout_ms: 5000
+    on_fail: skip
+
+config:
+  fail_strategy: retry
+  retry_count: 3
+
+success_marker:
+  type: ocr
+  text: "领取成功"
+  region: [300, 400, 400, 100]

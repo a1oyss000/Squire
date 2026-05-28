@@ -3,6 +3,7 @@ use crate::state::{TaskResult, TaskState};
 use squire_error::Result;
 use squire_input::{InputBackend, Point};
 use squire_vision::capture;
+use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Instant;
 use tokio::sync::{mpsc, watch};
@@ -32,6 +33,7 @@ pub struct RunContext {
     pub input: Arc<dyn InputBackend>,
     pub window_hwnd: isize,
     pub cancel_rx: watch::Receiver<bool>,
+    pub base_dir: PathBuf,
 }
 
 pub async fn run_task_with_context(
@@ -74,6 +76,7 @@ pub async fn run_task_with_context(
             }
             Err(e) => {
                 let err_msg = e.to_string();
+                tracing::warn!("Step {} failed: {}", i + 1, err_msg);
                 if let Some(tx) = event_tx {
                     let _ = tx.send(EngineEvent::StepFailed {
                         task: task.name.clone(),
@@ -106,9 +109,14 @@ pub async fn run_task_with_context(
                                 };
                             }
                             tracing::info!("Retry {}/{} for step {}", attempt + 1, max, i + 1);
-                            if execute_step(step, ctx).await.is_ok() {
-                                success = true;
-                                break;
+                            match execute_step(step, ctx).await {
+                                Ok(()) => {
+                                    success = true;
+                                    break;
+                                }
+                                Err(retry_err) => {
+                                    tracing::warn!("Retry {}/{} for step {} failed: {}", attempt + 1, max, i + 1, retry_err);
+                                }
                             }
                         }
                         if !success {
@@ -130,7 +138,9 @@ pub async fn run_task_with_context(
             match capture::capture_window(ctx.window_hwnd) {
                 Ok(image) => {
                     let thr = threshold.unwrap_or(0.8);
-                    if squire_vision::matcher::match_template(&image, path, thr).is_err() {
+                    let resolved = ctx.base_dir.join(path);
+                    let path_str = resolved.to_string_lossy();
+                    if squire_vision::matcher::match_template(&image, &path_str, thr).is_err() {
                         return TaskResult {
                             task_name: task.name.clone(),
                             state: TaskState::Failed,
@@ -212,7 +222,9 @@ fn resolve_target(target: &StepTarget, ctx: &RunContext) -> Result<Point> {
         StepTarget::Template { path, threshold } => {
             let image = capture::capture_window(ctx.window_hwnd)?;
             let thr = threshold.unwrap_or(0.8);
-            let result = squire_vision::matcher::match_template(&image, path, thr)?;
+            let resolved = ctx.base_dir.join(path);
+            let path_str = resolved.to_string_lossy();
+            let result = squire_vision::matcher::match_template(&image, &path_str, thr)?;
             let screen_pt = client_to_screen(ctx.window_hwnd, result.center.x, result.center.y);
             Ok(screen_pt)
         }

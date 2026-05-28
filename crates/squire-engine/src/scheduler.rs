@@ -2,6 +2,7 @@ use crate::config::TaskDefinition;
 use crate::runner::{self, EngineCommand, EngineEvent, EngineHandle, RunContext};
 use crate::state::TaskState;
 use squire_input::InputBackend;
+use std::path::PathBuf;
 use std::sync::Arc;
 use tokio::sync::{mpsc, watch};
 
@@ -9,6 +10,7 @@ pub fn create_engine(
     tasks: Vec<TaskDefinition>,
     input: Arc<dyn InputBackend>,
     window_hwnd: isize,
+    base_dir: PathBuf,
 ) -> EngineHandle {
     let (cmd_tx, mut cmd_rx) = mpsc::channel::<EngineCommand>(16);
     let (event_tx, event_rx) = mpsc::channel::<EngineEvent>(64);
@@ -20,6 +22,7 @@ pub fn create_engine(
                 input,
                 window_hwnd,
                 cancel_rx,
+                base_dir,
             };
 
             let cancel_tx_clone = cancel_tx.clone();

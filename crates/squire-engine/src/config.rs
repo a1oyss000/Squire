@@ -90,23 +90,16 @@ pub fn load_task(path: &Path) -> Result<TaskDefinition> {
     Ok(task)
 }
 
-pub fn validate_task(task: &TaskDefinition, base_path: &Path) -> Result<()> {
+pub fn validate_task(task: &TaskDefinition, _base_path: &Path) -> Result<()> {
     if task.steps.is_empty() {
         return Err(SquireError::Config("Task has no steps".to_string()));
     }
-    let base_dir = base_path.parent().unwrap_or(Path::new("."));
     for (i, step) in task.steps.iter().enumerate() {
         if step.timeout_ms == 0 {
             return Err(SquireError::Config(format!(
                 "Step {} has zero timeout",
                 i + 1
             )));
-        }
-        if let StepTarget::Template { path, .. } = &step.target {
-            let template_path = base_dir.join(path);
-            if !template_path.exists() {
-                return Err(SquireError::TemplateNotFound(path.clone()));
-            }
         }
     }
     Ok(())

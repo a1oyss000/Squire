@@ -1,3 +1,4 @@
+use serde::Serialize;
 use squire_error::{Result, SquireError};
 use std::sync::Arc;
 
@@ -6,6 +7,13 @@ pub struct Image {
     pub width: u32,
     pub height: u32,
     pub data: Arc<Vec<u8>>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct WindowInfo {
+    pub hwnd: isize,
+    pub title: String,
+    pub process_name: String,
 }
 
 #[cfg(windows)]
@@ -123,4 +131,105 @@ pub fn find_window(_title: &str) -> Result<isize> {
 #[cfg(not(windows))]
 pub fn capture_window(_hwnd: isize) -> Result<Image> {
     Err(SquireError::Vision("Not supported on this platform".to_string()))
+}
+
+#[cfg(windows)]
+pub fn list_windows() -> Vec<WindowInfo> {
+    use std::ffi::OsString;
+    use std::os::windows::ffi::OsStringExt;
+    use std::sync::Mutex;
+    use windows::Win32::Foundation::{BOOL, HWND, LPARAM};
+    use windows::Win32::UI::WindowsAndMessaging::{
+        EnumWindows, GetWindowTextLengthW, GetWindowTextW, GetWindowThreadProcessId,
+        IsWindowVisible,
+    };
+
+    let results: Arc<Mutex<Vec<WindowInfo>>> = Arc::new(Mutex::new(Vec::new()));
+    let results_clone = results.clone();
+
+    unsafe extern "system" fn enum_callback(hwnd: HWND, lparam: LPARAM) -> BOOL {
+        let results = &*(lparam.0 as *const Mutex<Vec<WindowInfo>>);
+
+        if !IsWindowVisible(hwnd).as_bool() {
+            return BOOL(1);
+        }
+
+        let title_len = GetWindowTextLengthW(hwnd);
+        if title_len == 0 {
+            return BOOL(1);
+        }
+
+        let mut title_buf = vec![0u16; (title_len + 1) as usize];
+        GetWindowTextW(hwnd, &mut title_buf);
+        let title = OsString::from_wide(&title_buf[..title_len as usize])
+            .to_string_lossy()
+            .to_string();
+
+        let skip_titles = ["Default IME", "MSCTFIME UI", "Program Manager"];
+        if skip_titles.iter().any(|s| title == *s) {
+            return BOOL(1);
+        }
+
+        let mut pid = 0u32;
+        GetWindowThreadProcessId(hwnd, Some(&mut pid));
+
+        let process_name = get_process_name(pid).unwrap_or_default();
+
+        if let Ok(mut list) = results.lock() {
+            list.push(WindowInfo {
+                hwnd: hwnd.0 as isize,
+                title,
+                process_name,
+            });
+        }
+
+        BOOL(1)
+    }
+
+    unsafe {
+        let _ = EnumWindows(
+            Some(enum_callback),
+            LPARAM(&*results_clone as *const Mutex<Vec<WindowInfo>> as isize),
+        );
+    }
+
+    Arc::try_unwrap(results)
+        .unwrap_or_else(|arc| (*arc).lock().unwrap().clone().into())
+        .into_inner()
+        .unwrap_or_default()
+}
+
+#[cfg(windows)]
+fn get_process_name(pid: u32) -> Option<String> {
+    use std::ffi::OsString;
+    use std::os::windows::ffi::OsStringExt;
+    use windows::core::PWSTR;
+    use windows::Win32::Foundation::MAX_PATH;
+    use windows::Win32::System::Threading::{
+        OpenProcess, QueryFullProcessImageNameW, PROCESS_NAME_FORMAT,
+        PROCESS_QUERY_LIMITED_INFORMATION,
+    };
+
+    unsafe {
+        let handle = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, false, pid).ok()?;
+        let mut buf = vec![0u16; MAX_PATH as usize];
+        let mut len = buf.len() as u32;
+        QueryFullProcessImageNameW(
+            handle,
+            PROCESS_NAME_FORMAT(0),
+            PWSTR(buf.as_mut_ptr()),
+            &mut len,
+        )
+        .ok()?;
+        let _ = windows::Win32::Foundation::CloseHandle(handle);
+        let path = OsString::from_wide(&buf[..len as usize])
+            .to_string_lossy()
+            .to_string();
+        path.rsplit('\\').next().map(|s| s.to_string())
+    }
+}
+
+#[cfg(not(windows))]
+pub fn list_windows() -> Vec<WindowInfo> {
+    Vec::new()
 }

@@ -3475,6 +3475,7 @@ dependencies = [
  "tracing",
  "tracing-appender",
  "tracing-subscriber",
+ "windows 0.58.0",
 ]
 
 [[package]]
@@ -3514,6 +3515,7 @@ name = "squire-vision"
 version = "0.1.0"
 dependencies = [
  "image",
+ "serde",
  "squire-error",
  "tokio",
  "tracing",

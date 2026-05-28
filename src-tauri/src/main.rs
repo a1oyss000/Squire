@@ -5,7 +5,7 @@ use squire_engine::runner::{EngineCommand, EngineEvent};
 use squire_engine::scheduler;
 use squire_engine::state::TaskResult;
 use squire_input::winapi::WinApiBackend;
-use squire_vision::capture;
+use squire_vision::capture::{self, WindowInfo};
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 use tauri::{Emitter, Manager, State};
@@ -58,13 +58,25 @@ fn safe_task_path(tasks_dir: &std::path::Path, name: &str) -> Result<PathBuf, St
 // PLACEHOLDER_COMMANDS
 
 #[tauri::command]
+fn list_windows() -> Vec<WindowInfo> {
+    capture::list_windows()
+}
+
+#[tauri::command]
 async fn start_execution(
     state: State<'_, AppState>,
     app: tauri::AppHandle,
-    window_title: String,
+    hwnd: isize,
     task_names: Vec<String>,
 ) -> Result<(), String> {
-    let hwnd = capture::find_window(&window_title).map_err(|e| e.to_string())?;
+    #[cfg(windows)]
+    {
+        use windows::Win32::Foundation::HWND;
+        use windows::Win32::UI::WindowsAndMessaging::IsWindow;
+        if !unsafe { IsWindow(HWND(hwnd as *mut _)) }.as_bool() {
+            return Err("Window no longer exists (stale handle)".to_string());
+        }
+    }
 
     let dir = &state.tasks_dir;
     let mut tasks: Vec<TaskDefinition> = Vec::new();
@@ -80,7 +92,8 @@ async fn start_execution(
     }
 
     let input = Arc::new(WinApiBackend::new());
-    let handle = scheduler::create_engine(tasks, input, hwnd);
+    let base_dir = state.tasks_dir.parent().unwrap_or(&state.tasks_dir).to_path_buf();
+    let handle = scheduler::create_engine(tasks, input, hwnd, base_dir);
 
     *state.engine_cmd.lock().unwrap() = Some(handle.cmd_tx.clone());
     handle.cmd_tx.send(EngineCommand::Start).await.map_err(|e| e.to_string())?;
@@ -172,6 +185,7 @@ fn main() {
         .invoke_handler(tauri::generate_handler![
             get_tasks,
             get_task_config,
+            list_windows,
             start_execution,
             stop_execution,
         ])

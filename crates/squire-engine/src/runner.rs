@@ -1,4 +1,4 @@
-use crate::config::{Action, FailStrategy, StepDef, StepTarget, TaskDefinition};
+use crate::config::{Action, FailStrategy, StepDef, StepTarget, SuccessMarker, TaskDefinition};
 use crate::state::{TaskResult, TaskState};
 use squire_error::Result;
 use squire_input::{InputBackend, Point};
@@ -32,17 +32,6 @@ pub struct RunContext {
     pub input: Arc<dyn InputBackend>,
     pub window_hwnd: isize,
     pub cancel_rx: watch::Receiver<bool>,
-}
-
-pub async fn run_task(task: &TaskDefinition) -> TaskResult {
-    let start = Instant::now();
-
-    TaskResult {
-        task_name: task.name.clone(),
-        state: TaskState::Success,
-        message: Some("Stub execution".to_string()),
-        duration_ms: start.elapsed().as_millis() as u64,
-    }
 }
 
 pub async fn run_task_with_context(
@@ -134,6 +123,55 @@ pub async fn run_task_with_context(
                 }
             }
         }
+    }
+
+    match &task.success_marker {
+        Some(SuccessMarker::Template { path, threshold }) => {
+            match capture::capture_window(ctx.window_hwnd) {
+                Ok(image) => {
+                    let thr = threshold.unwrap_or(0.8);
+                    if squire_vision::matcher::match_template(&image, path, thr).is_err() {
+                        return TaskResult {
+                            task_name: task.name.clone(),
+                            state: TaskState::Failed,
+                            message: Some("Success marker template not matched".to_string()),
+                            duration_ms: start.elapsed().as_millis() as u64,
+                        };
+                    }
+                }
+                Err(e) => {
+                    return TaskResult {
+                        task_name: task.name.clone(),
+                        state: TaskState::Failed,
+                        message: Some(format!("Failed to capture window for success marker: {}", e)),
+                        duration_ms: start.elapsed().as_millis() as u64,
+                    };
+                }
+            }
+        }
+        Some(SuccessMarker::Ocr { text, region }) => {
+            match capture::capture_window(ctx.window_hwnd) {
+                Ok(image) => {
+                    if squire_vision::ocr::find_text(&image, text, region.as_ref()).is_err() {
+                        return TaskResult {
+                            task_name: task.name.clone(),
+                            state: TaskState::Failed,
+                            message: Some(format!("Success marker text not found: {}", text)),
+                            duration_ms: start.elapsed().as_millis() as u64,
+                        };
+                    }
+                }
+                Err(e) => {
+                    return TaskResult {
+                        task_name: task.name.clone(),
+                        state: TaskState::Failed,
+                        message: Some(format!("Failed to capture window for success marker: {}", e)),
+                        duration_ms: start.elapsed().as_millis() as u64,
+                    };
+                }
+            }
+        }
+        None => {}
     }
 
     TaskResult {

@@ -8,14 +8,19 @@ use squire_input::winapi::WinApiBackend;
 use squire_vision::capture;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
-use tauri::{Emitter, State};
+use tauri::{Emitter, Manager, State};
 use tokio::sync::mpsc;
+use tracing_appender::non_blocking::WorkerGuard;
+use tracing_subscriber::{fmt, layer::SubscriberExt, util::SubscriberInitExt, EnvFilter};
 
 struct AppState {
     tasks_dir: PathBuf,
     results: Mutex<Vec<TaskResult>>,
     engine_cmd: Mutex<Option<mpsc::Sender<EngineCommand>>>,
 }
+
+/// Holds the tracing worker guard so the non-blocking writer stays alive.
+struct LogGuard(WorkerGuard);
 
 #[tauri::command]
 fn get_tasks(state: State<AppState>) -> Result<Vec<String>, String> {
@@ -116,17 +121,53 @@ async fn stop_execution(state: State<'_, AppState>) -> Result<(), String> {
 }
 
 fn main() {
-    tracing_subscriber::fmt()
-        .with_env_filter("squire=debug,info")
-        .init();
-
-    tracing::info!("Starting Squire");
-
     tauri::Builder::default()
-        .manage(AppState {
-            tasks_dir: PathBuf::from("tasks"),
-            results: Mutex::new(Vec::new()),
-            engine_cmd: Mutex::new(None),
+        .setup(|app| {
+            // Resolve logs directory using Tauri's app log dir
+            let logs_dir = app.path().app_log_dir().expect("failed to resolve app log dir");
+            std::fs::create_dir_all(&logs_dir).expect("failed to create logs directory");
+
+            let file_appender = tracing_appender::rolling::daily(&logs_dir, "squire.log");
+            let (non_blocking, guard) = tracing_appender::non_blocking(file_appender);
+
+            let console_layer = fmt::layer().compact();
+            let file_layer = fmt::layer().json().with_writer(non_blocking);
+            let filter = EnvFilter::new("squire=debug,info");
+
+            tracing_subscriber::registry()
+                .with(filter)
+                .with(console_layer)
+                .with(file_layer)
+                .init();
+
+            // Keep the guard alive for the app's lifetime
+            app.manage(LogGuard(guard));
+
+            tracing::info!("Starting Squire");
+            tracing::info!("Logs directory: {}", logs_dir.display());
+
+            // Resolve tasks directory:
+            // In dev mode, use the project root's tasks/ directory.
+            // In production, use a tasks/ dir next to the resource path.
+            let tasks_dir = if cfg!(debug_assertions) {
+                // CARGO_MANIFEST_DIR points to src-tauri/ at compile time
+                let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+                manifest_dir.parent().unwrap().join("tasks")
+            } else {
+                app.path().resource_dir()
+                    .expect("failed to resolve resource dir")
+                    .join("tasks")
+            };
+
+            tracing::info!("Tasks directory: {}", tasks_dir.display());
+
+            app.manage(AppState {
+                tasks_dir,
+                results: Mutex::new(Vec::new()),
+                engine_cmd: Mutex::new(None),
+            });
+
+            Ok(())
         })
         .invoke_handler(tauri::generate_handler![
             get_tasks,

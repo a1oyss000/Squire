@@ -1,35 +1,33 @@
 import { useEffect, useState } from 'react';
+import { invoke } from '@tauri-apps/api/core';
+import { listen } from '@tauri-apps/api/event';
 import { useAppStore } from './store';
 import { TaskList } from './components/TaskList';
 import { ExecutionStatus } from './components/ExecutionStatus';
+import { TaskConfig } from './components/TaskConfig';
 import './index.css';
 
 function App() {
   const { tasks, isRunning, setTasks, setRunning } = useAppStore();
   const [windowTitle, setWindowTitle] = useState('');
   const [logs, setLogs] = useState<string[]>([]);
+  const [selectedTask, setSelectedTask] = useState<string | null>(null);
 
   useEffect(() => {
     loadTasks();
     let unlisten: (() => void) | undefined;
-    (async () => {
-      try {
-        const { listen } = await import('@tauri-apps/api/event');
-        unlisten = await listen<string>('engine-event', (event) => {
-          const msg = event.payload;
-          setLogs((prev) => [...prev, msg]);
-          if (msg === 'done') {
-            setRunning(false);
-          }
-        });
-      } catch {}
-    })();
+    listen<string>('engine-event', (event) => {
+      const msg = event.payload;
+      setLogs((prev) => [...prev, msg]);
+      if (msg === 'done') {
+        setRunning(false);
+      }
+    }).then((fn) => { unlisten = fn; });
     return () => { unlisten?.(); };
   }, []);
 
   async function loadTasks() {
     try {
-      const { invoke } = await import('@tauri-apps/api/core');
       const names: string[] = await invoke('get_tasks');
       setTasks(names.map((name) => ({ name, enabled: true })));
     } catch {
@@ -45,7 +43,6 @@ function App() {
     setRunning(true);
     setLogs([]);
     try {
-      const { invoke } = await import('@tauri-apps/api/core');
       const enabledTasks = tasks.filter((t) => t.enabled).map((t) => t.name);
       await invoke('start_execution', {
         windowTitle: windowTitle.trim(),
@@ -59,7 +56,6 @@ function App() {
 
   async function handleStop() {
     try {
-      const { invoke } = await import('@tauri-apps/api/core');
       await invoke('stop_execution');
     } catch {}
     setRunning(false);
@@ -100,11 +96,15 @@ function App() {
               {isRunning ? 'Stop' : 'Start'}
             </button>
           </div>
-          <TaskList />
+          <TaskList selectedTask={selectedTask} onSelectTask={setSelectedTask} />
         </div>
 
         <div className="flex-1 p-4 overflow-y-auto">
-          <ExecutionStatus logs={logs} />
+          {selectedTask ? (
+            <TaskConfig taskName={selectedTask} onClose={() => setSelectedTask(null)} />
+          ) : (
+            <ExecutionStatus logs={logs} />
+          )}
         </div>
       </main>
     </div>

@@ -1,25 +1,9 @@
 use crate::config::TaskDefinition;
 use crate::runner::{self, EngineCommand, EngineEvent, EngineHandle, RunContext};
-use crate::state::{TaskResult, TaskState};
+use crate::state::TaskState;
 use squire_input::InputBackend;
 use std::sync::Arc;
 use tokio::sync::{mpsc, watch};
-
-pub async fn run_queue(tasks: Vec<TaskDefinition>) -> Vec<TaskResult> {
-    let mut results = Vec::new();
-
-    for task in &tasks {
-        if !task.enabled {
-            tracing::info!("Skipping disabled task: {}", task.name);
-            continue;
-        }
-        let result = runner::run_task(task).await;
-        tracing::info!("Task '{}' completed: {:?}", task.name, result.state);
-        results.push(result);
-    }
-
-    results
-}
 
 pub fn create_engine(
     tasks: Vec<TaskDefinition>,

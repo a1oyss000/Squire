@@ -5,11 +5,12 @@ import { useAppStore } from './store';
 import { TaskList } from './components/TaskList';
 import { ExecutionStatus } from './components/ExecutionStatus';
 import { TaskConfig } from './components/TaskConfig';
+import { WindowPicker } from './components/WindowPicker';
 import './index.css';
 
 function App() {
   const { tasks, isRunning, setTasks, setRunning } = useAppStore();
-  const [windowTitle, setWindowTitle] = useState('');
+  const [selectedWindow, setSelectedWindow] = useState<{ hwnd: number; title: string } | null>(null);
   const [logs, setLogs] = useState<string[]>([]);
   const [selectedTask, setSelectedTask] = useState<string | null>(null);
 
@@ -39,13 +40,13 @@ function App() {
   }
 
   async function handleStart() {
-    if (!windowTitle.trim()) return;
+    if (!selectedWindow) return;
     setRunning(true);
     setLogs([]);
     try {
       const enabledTasks = tasks.filter((t) => t.enabled).map((t) => t.name);
       await invoke('start_execution', {
-        windowTitle: windowTitle.trim(),
+        hwnd: selectedWindow.hwnd,
         taskNames: enabledTasks,
       });
     } catch (e: any) {
@@ -73,20 +74,16 @@ function App() {
       <main className="flex-1 flex">
         <div className="w-80 border-r border-gray-700 p-4 overflow-y-auto">
           <div className="mb-4">
-            <label className="block text-sm text-gray-400 mb-1">Window Title</label>
-            <input
-              type="text"
-              value={windowTitle}
-              onChange={(e) => setWindowTitle(e.target.value)}
-              placeholder="e.g. MuMu Player"
-              className="w-full px-3 py-1.5 bg-gray-800 border border-gray-600 rounded text-sm"
+            <WindowPicker
+              selected={selectedWindow}
+              onSelect={(hwnd, title) => setSelectedWindow({ hwnd, title })}
             />
           </div>
           <div className="flex items-center justify-between mb-4">
             <h2 className="text-lg font-semibold">Tasks</h2>
             <button
               onClick={isRunning ? handleStop : handleStart}
-              disabled={!isRunning && !windowTitle.trim()}
+              disabled={!isRunning && !selectedWindow}
               className={`px-4 py-1.5 rounded text-sm font-medium disabled:opacity-50 ${
                 isRunning
                   ? 'bg-red-600 hover:bg-red-700'

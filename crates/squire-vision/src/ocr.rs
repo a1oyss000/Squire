@@ -76,7 +76,7 @@ fn recognize_text_tess(image: &Image, region: Rect) -> Result<String> {
     let guard = TESS_ENGINE.get().unwrap().lock().unwrap();
     let (buf, w, h) = crop_bgra(image, region);
     unsafe {
-        TessBaseAPISetImage(guard.as_ptr(), buf.as_ptr(), w, h, 4, w * 4);
+        TessBaseAPISetImage(guard.as_ptr(), buf.as_ptr(), w, h, 3, w * 3);
         TessBaseAPISetSourceResolution(guard.as_ptr(), 72);
         TessBaseAPIRecognize(guard.as_ptr(), std::ptr::null_mut());
         let raw = TessBaseAPIGetUTF8Text(guard.as_ptr());
@@ -105,7 +105,7 @@ fn find_text_tess(screen: &Image, text: &str, region: Option<&[i32; 4]>) -> Resu
         }
     };
     unsafe {
-        TessBaseAPISetImage(guard.as_ptr(), buf.as_ptr(), w, h, 4, w * 4);
+        TessBaseAPISetImage(guard.as_ptr(), buf.as_ptr(), w, h, 3, w * 3);
         TessBaseAPISetSourceResolution(guard.as_ptr(), 72);
         TessBaseAPIRecognize(guard.as_ptr(), std::ptr::null_mut());
         let iter = TessBaseAPIGetIterator(guard.as_ptr());
@@ -141,11 +141,14 @@ fn crop_bgra(image: &Image, region: Rect) -> (Vec<u8>, i32, i32) {
     let y = region.y.max(0) as u32;
     let w = region.width.min(image.width.saturating_sub(x));
     let h = region.height.min(image.height.saturating_sub(y));
-    let mut buf = Vec::with_capacity((w * h * 4) as usize);
+    let mut buf = Vec::with_capacity((w * h * 3) as usize);
     for row in y..(y + h) {
-        let start = ((row * image.width + x) * 4) as usize;
-        let end = start + (w * 4) as usize;
-        buf.extend_from_slice(&image.data[start..end]);
+        for col in x..(x + w) {
+            let i = ((row * image.width + col) * 4) as usize;
+            buf.push(image.data[i + 2]); // R (from BGRA)
+            buf.push(image.data[i + 1]); // G
+            buf.push(image.data[i]);     // B
+        }
     }
     (buf, w as i32, h as i32)
 }

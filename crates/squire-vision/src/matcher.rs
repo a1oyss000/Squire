@@ -35,12 +35,23 @@ pub fn match_template(screen: &Image, template_path: &str, threshold: f64) -> Re
 
     let tmpl_img = image::open(template_path)
         .map_err(|e| squire_error::SquireError::Vision(format!("Failed to load template: {}", e)))?
-        .to_rgba8();
+        .to_rgb8();
 
     let tw = tmpl_img.width() as c_int;
     let th = tmpl_img.height() as c_int;
     let sw = screen.width as c_int;
     let sh = screen.height as c_int;
+
+    tracing::debug!(
+        "match_template: screen={}x{} ({} bytes), template={}x{}, path={}",
+        sw, sh, screen.data.len(), tw, th, template_path
+    );
+
+    // Check if screen data is all zeros (common with DirectX games and BitBlt)
+    let non_zero = screen.data.iter().take(1000).filter(|&&b| b != 0).count();
+    if non_zero == 0 {
+        tracing::warn!("match_template: screen data appears to be all zeros (capture may have failed)");
+    }
 
     if tw > sw || th > sh {
         return Err(squire_error::SquireError::Vision(
@@ -48,31 +59,25 @@ pub fn match_template(screen: &Image, template_path: &str, threshold: f64) -> Re
         ));
     }
 
-    // Generate binary mask from alpha channel: alpha > 128 → 255, else → 0
-    let mask: Vec<u8> = tmpl_img.pixels()
-        .map(|p| if p[3] > 128 { 255u8 } else { 0u8 })
-        .collect();
-    let has_transparent = mask.iter().any(|&v| v == 0);
-
     // Convert template to BGR for the C++ wrapper
     let tmpl_bgr: Vec<u8> = tmpl_img.pixels()
         .flat_map(|p| [p[2], p[1], p[0]])
         .collect();
 
-    // Screen is already BGRA
-    let screen_data = screen.data.as_ref();
+    // Convert screen from BGRA to BGR (strip alpha)
+    let screen_bgr: Vec<u8> = screen.data.chunks_exact(4)
+        .flat_map(|p| [p[0], p[1], p[2]])
+        .collect();
 
     let mut max_val: f64 = 0.0;
     let mut max_x: c_int = 0;
     let mut max_y: c_int = 0;
 
-    let mask_ptr = if has_transparent { mask.as_ptr() } else { std::ptr::null() };
-
     let ret = unsafe {
         squire_match_template_masked(
-            screen_data.as_ptr(), sw, sh, 4,
+            screen_bgr.as_ptr(), sw, sh, 3,
             tmpl_bgr.as_ptr(), tw, th, 3,
-            mask_ptr,
+            std::ptr::null(),
             CV_TM_CCOEFF_NORMED,
             &mut max_val, &mut max_x, &mut max_y,
         )
@@ -83,6 +88,8 @@ pub fn match_template(screen: &Image, template_path: &str, threshold: f64) -> Re
             "matchTemplate failed".into(),
         ));
     }
+
+    tracing::debug!("match_template: result max_val={:.4}, pos=({},{})", max_val, max_x, max_y);
 
     if max_val >= threshold {
         Ok(MatchResult {

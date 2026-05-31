@@ -13,33 +13,21 @@ fn find_lib_by_prefix(lib_dir: &PathBuf, prefix: &str) -> Option<String> {
     None
 }
 
-fn find_lib_dir(env_var: &str, _lib_name: &str) -> Option<PathBuf> {
-    if let Ok(dir) = env::var(env_var) {
-        let path = PathBuf::from(&dir).join("lib");
-        if path.exists() {
-            return Some(path);
-        }
-        let path = PathBuf::from(&dir);
-        if path.exists() {
-            return Some(path);
+fn find_vcpkg_base() -> Option<PathBuf> {
+    if let Ok(root) = env::var("VCPKG_ROOT") {
+        let p = PathBuf::from(&root).join("installed").join("x64-windows");
+        if p.exists() {
+            return Some(p);
         }
     }
-
-    if let Ok(vcpkg_root) = env::var("VCPKG_ROOT") {
-        let path = PathBuf::from(&vcpkg_root)
-            .join("installed")
-            .join("x64-windows")
-            .join("lib");
-        if path.exists() {
-            return Some(path);
-        }
-    }
-
-    let default = PathBuf::from(r"C:\vcpkg\installed\x64-windows\lib");
+    let default = PathBuf::from(r"C:\Software\vcpkg\installed\x64-windows");
     if default.exists() {
         return Some(default);
     }
-
+    let alt = PathBuf::from(r"C:\vcpkg\installed\x64-windows");
+    if alt.exists() {
+        return Some(alt);
+    }
     None
 }
 
@@ -47,53 +35,47 @@ fn main() {
     println!("cargo:rerun-if-env-changed=OPENCV_DIR");
     println!("cargo:rerun-if-env-changed=TESSERACT_DIR");
     println!("cargo:rerun-if-env-changed=VCPKG_ROOT");
+    println!("cargo:rerun-if-changed=src/ffi/opencv_wrapper.cpp");
 
-    if env::var("CARGO_FEATURE_FFI").is_err() {
-        return;
-    }
+    let vcpkg_base = find_vcpkg_base().expect(
+        "vcpkg not found. Set VCPKG_ROOT or install to C:\\Software\\vcpkg",
+    );
+    let lib_dir = vcpkg_base.join("lib");
+    let include_dir = vcpkg_base.join("include");
 
-    let opencv_lib = match find_lib_dir("OPENCV_DIR", "opencv") {
-        Some(p) => p,
-        None => {
-            println!(
-                "cargo:warning=OpenCV library not found. Set OPENCV_DIR or VCPKG_ROOT, \
-                 or install via: vcpkg install opencv4:x64-windows"
-            );
-            return;
-        }
+    // Compile C++ wrapper
+    let opencv_include = if include_dir.join("opencv4").exists() {
+        include_dir.join("opencv4")
+    } else {
+        include_dir.clone()
     };
 
-    let tess_lib = match find_lib_dir("TESSERACT_DIR", "tesseract") {
-        Some(p) => p,
-        None => {
-            println!(
-                "cargo:warning=Tesseract library not found. Set TESSERACT_DIR or VCPKG_ROOT, \
-                 or install via: vcpkg install tesseract:x64-windows"
-            );
-            return;
-        }
-    };
+    cc::Build::new()
+        .cpp(true)
+        .std("c++17")
+        .file("src/ffi/opencv_wrapper.cpp")
+        .include(&opencv_include)
+        .compile("opencv_wrapper");
 
-    println!("cargo:rustc-link-search=native={}", opencv_lib.display());
-    println!("cargo:rustc-link-search=native={}", tess_lib.display());
+    // Link libraries
+    println!("cargo:rustc-link-search=native={}", lib_dir.display());
 
-    // OpenCV: try opencv_world first (single DLL), fall back to individual modules
-    let opencv_world = opencv_lib.join("opencv_world4.lib");
+    // OpenCV
+    let opencv_world = lib_dir.join("opencv_world4.lib");
     if opencv_world.exists() {
         println!("cargo:rustc-link-lib=dylib=opencv_world4");
     } else {
         println!("cargo:rustc-link-lib=dylib=opencv_core4");
         println!("cargo:rustc-link-lib=dylib=opencv_imgproc4");
-        println!("cargo:rustc-link-lib=dylib=opencv_imgcodecs4");
     }
 
-    // Tesseract: detect version from lib directory
-    let tess_name = find_lib_by_prefix(&tess_lib, "tesseract")
+    // Tesseract
+    let tess_name = find_lib_by_prefix(&lib_dir, "tesseract")
         .unwrap_or_else(|| "tesseract55".to_string());
     println!("cargo:rustc-link-lib=dylib={}", tess_name);
 
-    // Leptonica: detect version from lib directory
-    let lept_name = find_lib_by_prefix(&tess_lib, "leptonica")
+    // Leptonica
+    let lept_name = find_lib_by_prefix(&lib_dir, "leptonica")
         .unwrap_or_else(|| "leptonica-1.84.1".to_string());
     println!("cargo:rustc-link-lib=dylib={}", lept_name);
 }

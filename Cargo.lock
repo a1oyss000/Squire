@@ -3514,6 +3514,7 @@ dependencies = [
 name = "squire-vision"
 version = "0.1.0"
 dependencies = [
+ "cc",
  "image",
  "serde",
  "squire-error",

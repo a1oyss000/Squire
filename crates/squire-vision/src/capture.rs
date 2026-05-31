@@ -36,6 +36,175 @@ pub fn find_window(title: &str) -> Result<isize> {
 
 #[cfg(windows)]
 pub fn capture_window(hwnd: isize) -> Result<Image> {
+    match capture_window_wgc(hwnd) {
+        Ok(image) => Ok(image),
+        Err(e) => {
+            tracing::warn!("WGC capture failed ({}), falling back to BitBlt", e);
+            capture_window_bitblt(hwnd)
+        }
+    }
+}
+
+#[cfg(windows)]
+fn capture_window_wgc(hwnd: isize) -> Result<Image> {
+    use windows::core::Interface;
+    use windows::Graphics::Capture::{Direct3D11CaptureFramePool, GraphicsCaptureItem};
+    use windows::Graphics::DirectX::Direct3D11::IDirect3DDevice;
+    use windows::Graphics::DirectX::DirectXPixelFormat;
+    use windows::Win32::Foundation::{HWND, WAIT_OBJECT_0};
+    use windows::Win32::Graphics::Direct3D::D3D_DRIVER_TYPE_HARDWARE;
+    use windows::Win32::Graphics::Direct3D11::{
+        D3D11CreateDevice, D3D11_CPU_ACCESS_READ,
+        D3D11_CREATE_DEVICE_BGRA_SUPPORT, D3D11_MAP_READ,
+        D3D11_MAPPED_SUBRESOURCE,
+        D3D11_SDK_VERSION, D3D11_TEXTURE2D_DESC, D3D11_USAGE_STAGING,
+        ID3D11Resource, ID3D11Texture2D,
+    };
+    use windows::Win32::Graphics::Dxgi::IDXGIDevice;
+    use windows::Win32::System::Threading::{CreateEventW, WaitForSingleObject};
+    use windows::Win32::System::WinRT::Direct3D11::{
+        CreateDirect3D11DeviceFromDXGIDevice, IDirect3DDxgiInterfaceAccess,
+    };
+    use windows::Win32::System::WinRT::Graphics::Capture::IGraphicsCaptureItemInterop;
+
+    unsafe {
+        // 1. Create D3D11 device
+        let mut device = None;
+        let mut context = None;
+        D3D11CreateDevice(
+            None,
+            D3D_DRIVER_TYPE_HARDWARE,
+            None,
+            D3D11_CREATE_DEVICE_BGRA_SUPPORT,
+            None,
+            D3D11_SDK_VERSION,
+            Some(&mut device),
+            None,
+            Some(&mut context),
+        ).map_err(|e| SquireError::Vision(format!("D3D11CreateDevice: {}", e)))?;
+        let device = device.unwrap();
+        let context = context.unwrap();
+
+        // 2. Bridge to WinRT IDirect3DDevice
+        let dxgi_device: IDXGIDevice = device.cast()
+            .map_err(|e| SquireError::Vision(format!("IDXGIDevice: {}", e)))?;
+        let inspectable = CreateDirect3D11DeviceFromDXGIDevice(&dxgi_device)
+            .map_err(|e| SquireError::Vision(format!("WinRT device: {}", e)))?;
+        let d3d_device: IDirect3DDevice = inspectable.cast()
+            .map_err(|e| SquireError::Vision(format!("IDirect3DDevice: {}", e)))?;
+
+        // 3. Create GraphicsCaptureItem from HWND
+        let interop: IGraphicsCaptureItemInterop =
+            windows::core::factory::<GraphicsCaptureItem, IGraphicsCaptureItemInterop>()
+                .map_err(|e| SquireError::Vision(format!("Interop factory: {}", e)))?;
+        let item: GraphicsCaptureItem = interop.CreateForWindow(HWND(hwnd as *mut _))
+            .map_err(|e| SquireError::Vision(format!("CreateForWindow: {}", e)))?;
+        let size = item.Size()
+            .map_err(|e| SquireError::Vision(format!("Item size: {}", e)))?;
+
+        // 4. Create frame pool and session
+        let frame_pool = Direct3D11CaptureFramePool::CreateFreeThreaded(
+            &d3d_device,
+            DirectXPixelFormat::B8G8R8A8UIntNormalized,
+            1,
+            size,
+        ).map_err(|e| SquireError::Vision(format!("FramePool: {}", e)))?;
+
+        let session = frame_pool.CreateCaptureSession(&item)
+            .map_err(|e| SquireError::Vision(format!("CaptureSession: {}", e)))?;
+
+        let _ = session.SetIsBorderRequired(false);
+        let _ = session.SetIsCursorCaptureEnabled(false);
+
+        // 5. Set up event for synchronization
+        let event = CreateEventW(None, true, false, None)
+            .map_err(|e| SquireError::Vision(format!("CreateEvent: {}", e)))?;
+
+        let event_ptr = event.0 as usize;
+        frame_pool.FrameArrived(&windows::Foundation::TypedEventHandler::new(
+            move |_, _| {
+                let h = windows::Win32::Foundation::HANDLE(event_ptr as *mut _);
+                let _ = windows::Win32::System::Threading::SetEvent(h);
+                Ok(())
+            },
+        )).map_err(|e| SquireError::Vision(format!("FrameArrived: {}", e)))?;
+
+        // 6. Start capture and wait for frame
+        session.StartCapture()
+            .map_err(|e| SquireError::Vision(format!("StartCapture: {}", e)))?;
+
+        let wait_result = WaitForSingleObject(event, 2000);
+        if wait_result != WAIT_OBJECT_0 {
+            let _ = session.Close();
+            let _ = frame_pool.Close();
+            return Err(SquireError::Vision("WGC frame capture timed out".into()));
+        }
+
+        // 7. Get frame and extract texture
+        let frame = frame_pool.TryGetNextFrame()
+            .map_err(|e| SquireError::Vision(format!("TryGetNextFrame: {}", e)))?;
+        let surface = frame.Surface()
+            .map_err(|e| SquireError::Vision(format!("Frame surface: {}", e)))?;
+        let access: IDirect3DDxgiInterfaceAccess = surface.cast()
+            .map_err(|e| SquireError::Vision(format!("DxgiAccess: {}", e)))?;
+        let texture: ID3D11Texture2D = access.GetInterface()
+            .map_err(|e| SquireError::Vision(format!("GetInterface: {}", e)))?;
+
+        // 8. Create staging texture and copy
+        let mut desc = D3D11_TEXTURE2D_DESC::default();
+        texture.GetDesc(&mut desc);
+        desc.Usage = D3D11_USAGE_STAGING;
+        desc.BindFlags = 0;
+        desc.CPUAccessFlags = D3D11_CPU_ACCESS_READ.0 as u32;
+        desc.MiscFlags = 0;
+
+        let mut staging: Option<ID3D11Texture2D> = None;
+        device.CreateTexture2D(&desc, None, Some(&mut staging))
+            .map_err(|e| SquireError::Vision(format!("Staging texture: {}", e)))?;
+        let staging = staging.unwrap();
+
+        let staging_res: ID3D11Resource = staging.cast()
+            .map_err(|e| SquireError::Vision(format!("staging cast: {}", e)))?;
+        let texture_res: ID3D11Resource = texture.cast()
+            .map_err(|e| SquireError::Vision(format!("texture cast: {}", e)))?;
+        context.CopyResource(&staging_res, &texture_res);
+
+        // 9. Map and read pixels
+        let mut mapped = D3D11_MAPPED_SUBRESOURCE::default();
+        context.Map(&staging_res, 0, D3D11_MAP_READ, 0, Some(&mut mapped))
+            .map_err(|e| SquireError::Vision(format!("Map: {}", e)))?;
+
+        let width = desc.Width;
+        let height = desc.Height;
+        let row_pitch = mapped.RowPitch as usize;
+        let mut buffer = vec![0u8; (width * height * 4) as usize];
+
+        let src = mapped.pData as *const u8;
+        for y in 0..height as usize {
+            let src_row = src.add(y * row_pitch);
+            let dst_offset = y * (width as usize) * 4;
+            std::ptr::copy_nonoverlapping(
+                src_row, buffer.as_mut_ptr().add(dst_offset), (width as usize) * 4,
+            );
+        }
+
+        context.Unmap(&staging_res, 0);
+
+        // 10. Cleanup
+        let _ = session.Close();
+        let _ = frame_pool.Close();
+        let _ = windows::Win32::Foundation::CloseHandle(event);
+
+        Ok(Image {
+            width,
+            height,
+            data: Arc::new(buffer),
+        })
+    }
+}
+
+#[cfg(windows)]
+fn capture_window_bitblt(hwnd: isize) -> Result<Image> {
     use windows::Win32::Foundation::{HWND, RECT};
     use windows::Win32::Graphics::Gdi::{
         BitBlt, CreateCompatibleBitmap, CreateCompatibleDC, DeleteDC,
@@ -53,24 +222,19 @@ pub fn capture_window(hwnd: isize) -> Result<Image> {
     let height = (rect.bottom - rect.top) as u32;
 
     if width == 0 || height == 0 {
-        return Err(SquireError::Vision("Window has zero size".to_string()));
+        return Err(SquireError::Vision("Window has zero size".into()));
     }
 
     let hdc_window = unsafe { GetDC(hwnd_val) };
     let hdc_mem = unsafe { CreateCompatibleDC(hdc_window) };
-    let hbm = unsafe { CreateCompatibleBitmap(hdc_window, width as i32, height as i32) };
-
+    let hbm = unsafe {
+        CreateCompatibleBitmap(hdc_window, width as i32, height as i32)
+    };
     let old_obj = unsafe { SelectObject(hdc_mem, hbm) };
 
     let blt_result = unsafe {
-        BitBlt(
-            hdc_mem,
-            0, 0,
-            width as i32, height as i32,
-            hdc_window,
-            0, 0,
-            SRCCOPY,
-        )
+        BitBlt(hdc_mem, 0, 0, width as i32, height as i32,
+               hdc_window, 0, 0, SRCCOPY)
     };
 
     if let Err(e) = blt_result {
@@ -83,7 +247,8 @@ pub fn capture_window(hwnd: isize) -> Result<Image> {
         return Err(SquireError::Vision(format!("BitBlt: {}", e)));
     }
 
-    let mut bmi = BITMAPINFO {
+    let mut buffer = vec![0u8; (width * height * 4) as usize];
+    let bmi = BITMAPINFO {
         bmiHeader: BITMAPINFOHEADER {
             biSize: std::mem::size_of::<BITMAPINFOHEADER>() as u32,
             biWidth: width as i32,
@@ -96,15 +261,11 @@ pub fn capture_window(hwnd: isize) -> Result<Image> {
         ..Default::default()
     };
 
-    let mut buffer: Vec<u8> = vec![0u8; (width * height * 4) as usize];
-    unsafe {
+    let lines = unsafe {
         GetDIBits(
-            hdc_mem,
-            hbm,
-            0,
-            height,
+            hdc_mem, hbm, 0, height,
             Some(buffer.as_mut_ptr() as *mut _),
-            &mut bmi,
+            &bmi as *const _ as *mut _,
             DIB_RGB_COLORS,
         )
     };
@@ -116,6 +277,10 @@ pub fn capture_window(hwnd: isize) -> Result<Image> {
         ReleaseDC(hwnd_val, hdc_window);
     }
 
+    if lines == 0 {
+        return Err(SquireError::Vision("GetDIBits returned 0 lines".into()));
+    }
+
     Ok(Image {
         width,
         height,
@@ -123,113 +288,104 @@ pub fn capture_window(hwnd: isize) -> Result<Image> {
     })
 }
 
+#[cfg(windows)]
+pub fn list_windows() -> Result<Vec<WindowInfo>> {
+    use windows::Win32::Foundation::{BOOL, HWND, LPARAM};
+    use windows::Win32::UI::WindowsAndMessaging::{
+        EnumWindows, GetWindowTextA, GetWindowTextLengthA, IsWindowVisible,
+    };
+
+    unsafe extern "system" fn enum_callback(hwnd: HWND, lparam: LPARAM) -> BOOL {
+        let windows = &mut *(lparam.0 as *mut Vec<WindowInfo>);
+        if IsWindowVisible(hwnd).as_bool() {
+            let len = GetWindowTextLengthA(hwnd);
+            if len > 0 {
+                let mut buf = vec![0u8; (len + 1) as usize];
+                GetWindowTextA(hwnd, &mut buf);
+                let title = String::from_utf8_lossy(&buf[..len as usize])
+                    .to_string();
+                if !title.is_empty() {
+                    let process_name = get_process_name(hwnd.0 as isize)
+                        .unwrap_or_default();
+                    windows.push(WindowInfo {
+                        hwnd: hwnd.0 as isize,
+                        title,
+                        process_name,
+                    });
+                }
+            }
+        }
+        BOOL(1)
+    }
+
+    let mut windows: Vec<WindowInfo> = Vec::new();
+    unsafe {
+        let _ = EnumWindows(
+            Some(enum_callback),
+            LPARAM(&mut windows as *mut _ as isize),
+        );
+    }
+    Ok(windows)
+}
+
+#[cfg(windows)]
+pub fn get_process_name(hwnd: isize) -> Result<String> {
+    use windows::core::PSTR;
+    use windows::Win32::Foundation::HWND;
+    use windows::Win32::System::Threading::{
+        OpenProcess, QueryFullProcessImageNameA,
+        PROCESS_NAME_FORMAT, PROCESS_QUERY_LIMITED_INFORMATION,
+    };
+    use windows::Win32::UI::WindowsAndMessaging::GetWindowThreadProcessId;
+
+    let mut pid = 0u32;
+    unsafe { GetWindowThreadProcessId(HWND(hwnd as *mut _), Some(&mut pid)) };
+
+    if pid == 0 {
+        return Ok(String::new());
+    }
+
+    let handle = unsafe {
+        OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, false, pid)
+    }.map_err(|e| SquireError::Vision(format!("OpenProcess: {}", e)))?;
+
+    let mut buf = vec![0u8; 260];
+    let mut len = buf.len() as u32;
+    let ok = unsafe {
+        QueryFullProcessImageNameA(
+            handle,
+            PROCESS_NAME_FORMAT(0),
+            PSTR(buf.as_mut_ptr()),
+            &mut len,
+        )
+    };
+
+    unsafe { let _ = windows::Win32::Foundation::CloseHandle(handle); }
+
+    if ok.is_err() {
+        return Ok(String::new());
+    }
+
+    let path = String::from_utf8_lossy(&buf[..len as usize]).to_string();
+    Ok(path.rsplit('\\').next().unwrap_or("").to_string())
+}
+
 #[cfg(not(windows))]
 pub fn find_window(_title: &str) -> Result<isize> {
-    Err(SquireError::Vision("Not supported on this platform".to_string()))
+    Err(SquireError::Vision("Not supported on this platform".into()))
 }
 
 #[cfg(not(windows))]
 pub fn capture_window(_hwnd: isize) -> Result<Image> {
-    Err(SquireError::Vision("Not supported on this platform".to_string()))
-}
-
-#[cfg(windows)]
-pub fn list_windows() -> Vec<WindowInfo> {
-    use std::ffi::OsString;
-    use std::os::windows::ffi::OsStringExt;
-    use std::sync::Mutex;
-    use windows::Win32::Foundation::{BOOL, HWND, LPARAM};
-    use windows::Win32::UI::WindowsAndMessaging::{
-        EnumWindows, GetWindowTextLengthW, GetWindowTextW, GetWindowThreadProcessId,
-        IsWindowVisible,
-    };
-
-    let results: Arc<Mutex<Vec<WindowInfo>>> = Arc::new(Mutex::new(Vec::new()));
-    let results_clone = results.clone();
-
-    unsafe extern "system" fn enum_callback(hwnd: HWND, lparam: LPARAM) -> BOOL {
-        let results = &*(lparam.0 as *const Mutex<Vec<WindowInfo>>);
-
-        if !IsWindowVisible(hwnd).as_bool() {
-            return BOOL(1);
-        }
-
-        let title_len = GetWindowTextLengthW(hwnd);
-        if title_len == 0 {
-            return BOOL(1);
-        }
-
-        let mut title_buf = vec![0u16; (title_len + 1) as usize];
-        GetWindowTextW(hwnd, &mut title_buf);
-        let title = OsString::from_wide(&title_buf[..title_len as usize])
-            .to_string_lossy()
-            .to_string();
-
-        let skip_titles = ["Default IME", "MSCTFIME UI", "Program Manager"];
-        if skip_titles.iter().any(|s| title == *s) {
-            return BOOL(1);
-        }
-
-        let mut pid = 0u32;
-        GetWindowThreadProcessId(hwnd, Some(&mut pid));
-
-        let process_name = get_process_name(pid).unwrap_or_default();
-
-        if let Ok(mut list) = results.lock() {
-            list.push(WindowInfo {
-                hwnd: hwnd.0 as isize,
-                title,
-                process_name,
-            });
-        }
-
-        BOOL(1)
-    }
-
-    unsafe {
-        let _ = EnumWindows(
-            Some(enum_callback),
-            LPARAM(&*results_clone as *const Mutex<Vec<WindowInfo>> as isize),
-        );
-    }
-
-    Arc::try_unwrap(results)
-        .unwrap_or_else(|arc| (*arc).lock().unwrap().clone().into())
-        .into_inner()
-        .unwrap_or_default()
-}
-
-#[cfg(windows)]
-fn get_process_name(pid: u32) -> Option<String> {
-    use std::ffi::OsString;
-    use std::os::windows::ffi::OsStringExt;
-    use windows::core::PWSTR;
-    use windows::Win32::Foundation::MAX_PATH;
-    use windows::Win32::System::Threading::{
-        OpenProcess, QueryFullProcessImageNameW, PROCESS_NAME_FORMAT,
-        PROCESS_QUERY_LIMITED_INFORMATION,
-    };
-
-    unsafe {
-        let handle = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, false, pid).ok()?;
-        let mut buf = vec![0u16; MAX_PATH as usize];
-        let mut len = buf.len() as u32;
-        QueryFullProcessImageNameW(
-            handle,
-            PROCESS_NAME_FORMAT(0),
-            PWSTR(buf.as_mut_ptr()),
-            &mut len,
-        )
-        .ok()?;
-        let _ = windows::Win32::Foundation::CloseHandle(handle);
-        let path = OsString::from_wide(&buf[..len as usize])
-            .to_string_lossy()
-            .to_string();
-        path.rsplit('\\').next().map(|s| s.to_string())
-    }
+    Err(SquireError::Vision("Not supported on this platform".into()))
 }
 
 #[cfg(not(windows))]
-pub fn list_windows() -> Vec<WindowInfo> {
-    Vec::new()
+pub fn list_windows() -> Result<Vec<WindowInfo>> {
+    Ok(Vec::new())
+}
+
+#[cfg(not(windows))]
+pub fn get_process_name(_hwnd: isize) -> Result<String> {
+    Ok(String::new())
 }

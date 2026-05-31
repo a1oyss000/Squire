@@ -59,7 +59,7 @@ fn safe_task_path(tasks_dir: &std::path::Path, name: &str) -> Result<PathBuf, St
 
 #[tauri::command]
 fn list_windows() -> Vec<WindowInfo> {
-    capture::list_windows()
+    capture::list_windows().unwrap_or_default()
 }
 
 #[tauri::command]

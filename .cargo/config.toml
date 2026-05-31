@@ -1,0 +1,2 @@
+[env]
+VCPKG_BIN = { value = "C:\\Software\\vcpkg\\installed\\x64-windows\\bin", relative = false }

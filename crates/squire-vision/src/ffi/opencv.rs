@@ -1,13 +1,12 @@
 #![allow(non_camel_case_types, non_snake_case)]
 
-use std::ffi::{c_char, c_double, c_int, c_void};
+use std::ffi::{c_double, c_int, c_void};
 
 pub const CV_8UC1: c_int = 0;
 pub const CV_8UC3: c_int = 16;
 pub const CV_8UC4: c_int = 24;
 pub const CV_32FC1: c_int = 5;
 pub const CV_TM_CCOEFF_NORMED: c_int = 5;
-pub const IMREAD_COLOR: c_int = 1;
 pub const COLOR_BGRA2GRAY: c_int = 10;
 pub const COLOR_BGR2GRAY: c_int = 6;
 
@@ -28,7 +27,6 @@ extern "C" {
     pub fn cvCreateMat(rows: c_int, cols: c_int, mat_type: c_int) -> *mut CvMat;
     pub fn cvReleaseMat(mat: *mut *mut CvMat);
 
-    pub fn cvLoadImage(filename: *const c_char, iscolor: c_int) -> *mut CvMat;
     pub fn cvCvtColor(src: *const CvMat, dst: *mut CvMat, code: c_int);
     pub fn cvMatchTemplate(image: *const CvMat, templ: *const CvMat, result: *mut CvMat, method: c_int);
     pub fn cvMinMaxLoc(

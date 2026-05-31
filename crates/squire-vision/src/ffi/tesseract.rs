@@ -14,6 +14,11 @@ pub struct TessResultIterator {
     _opaque: [u8; 0],
 }
 
+#[repr(C)]
+pub struct TessPageIterator {
+    _opaque: [u8; 0],
+}
+
 extern "C" {
     pub fn TessBaseAPICreate() -> *mut TessBaseAPI;
     pub fn TessBaseAPIDelete(handle: *mut TessBaseAPI);
@@ -43,8 +48,11 @@ extern "C" {
         handle: *mut TessResultIterator,
         level: c_int,
     ) -> *mut c_char;
-    pub fn TessResultIteratorBoundingBox(
+    pub fn TessResultIteratorGetPageIterator(
         handle: *mut TessResultIterator,
+    ) -> *mut TessPageIterator;
+    pub fn TessPageIteratorBoundingBox(
+        handle: *const TessPageIterator,
         level: c_int,
         left: *mut c_int,
         top: *mut c_int,

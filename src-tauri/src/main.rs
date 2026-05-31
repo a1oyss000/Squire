@@ -92,7 +92,7 @@ async fn start_execution(
     }
 
     let input = Arc::new(WinApiBackend::new());
-    let base_dir = state.tasks_dir.parent().unwrap_or(&state.tasks_dir).to_path_buf();
+    let base_dir = state.tasks_dir.clone();
     let handle = scheduler::create_engine(tasks, input, hwnd, base_dir);
 
     *state.engine_cmd.lock().unwrap() = Some(handle.cmd_tx.clone());
@@ -134,6 +134,12 @@ async fn stop_execution(state: State<'_, AppState>) -> Result<(), String> {
 }
 
 fn main() {
+    #[cfg(windows)]
+    if !is_elevated() {
+        relaunch_as_admin();
+        return;
+    }
+
     tauri::Builder::default()
         .setup(|app| {
             // Resolve logs directory using Tauri's app log dir
@@ -193,3 +199,48 @@ fn main() {
         .expect("error while running tauri application");
 }
 
+#[cfg(windows)]
+fn is_elevated() -> bool {
+    use windows::Win32::Foundation::{HANDLE, CloseHandle};
+    use windows::Win32::Security::{GetTokenInformation, TokenElevation, TOKEN_ELEVATION, TOKEN_QUERY};
+    use windows::Win32::System::Threading::{GetCurrentProcess, OpenProcessToken};
+
+    unsafe {
+        let mut token = HANDLE::default();
+        if OpenProcessToken(GetCurrentProcess(), TOKEN_QUERY, &mut token).is_err() {
+            return false;
+        }
+        let mut elevation = TOKEN_ELEVATION::default();
+        let mut size = 0u32;
+        let ok = GetTokenInformation(
+            token,
+            TokenElevation,
+            Some(&mut elevation as *mut _ as *mut _),
+            std::mem::size_of::<TOKEN_ELEVATION>() as u32,
+            &mut size,
+        );
+        let _ = CloseHandle(token);
+        ok.is_ok() && elevation.TokenIsElevated != 0
+    }
+}
+
+#[cfg(windows)]
+fn relaunch_as_admin() {
+    use windows::Win32::UI::Shell::ShellExecuteW;
+    use windows::Win32::UI::WindowsAndMessaging::SW_SHOWNORMAL;
+    use windows::core::{PCWSTR, w};
+
+    let exe = std::env::current_exe().unwrap_or_default();
+    let exe_wide: Vec<u16> = exe.to_string_lossy().encode_utf16().chain(std::iter::once(0)).collect();
+
+    unsafe {
+        ShellExecuteW(
+            None,
+            w!("runas"),
+            PCWSTR(exe_wide.as_ptr()),
+            PCWSTR::null(),
+            PCWSTR::null(),
+            SW_SHOWNORMAL,
+        );
+    }
+}

@@ -142,8 +142,9 @@ fn find_text_tess(screen: &Image, text: &str, region: Option<&[i32; 4]>) -> Resu
                 let matches = word.to_lowercase().contains(&text.to_lowercase());
                 TessDeleteText(raw);
                 if matches {
+                    let page_iter = TessResultIteratorGetPageIterator(iter);
                     let (mut l, mut t, mut r, mut b) = (0i32, 0i32, 0i32, 0i32);
-                    TessResultIteratorBoundingBox(iter, RIL_WORD, &mut l, &mut t, &mut r, &mut b);
+                    TessPageIteratorBoundingBox(page_iter, RIL_WORD, &mut l, &mut t, &mut r, &mut b);
                     TessResultIteratorDelete(iter);
                     let cx = offset_x + (l + r) / 2;
                     let cy = offset_y + (t + b) / 2;

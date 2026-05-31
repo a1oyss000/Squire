@@ -19,6 +19,7 @@ impl WinApiBackend {
 impl super::InputBackend for WinApiBackend {
     fn click(&self, point: Point) -> Result<()> {
         move_cursor(point)?;
+        std::thread::sleep(std::time::Duration::from_millis(50));
         send_click()?;
         Ok(())
     }

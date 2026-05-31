@@ -1,5 +1,17 @@
 use std::env;
+use std::fs;
 use std::path::PathBuf;
+
+fn find_lib_by_prefix(lib_dir: &PathBuf, prefix: &str) -> Option<String> {
+    let entries = fs::read_dir(lib_dir).ok()?;
+    for entry in entries.flatten() {
+        let name = entry.file_name().to_string_lossy().to_string();
+        if name.starts_with(prefix) && name.ends_with(".lib") {
+            return Some(name.trim_end_matches(".lib").to_string());
+        }
+    }
+    None
+}
 
 fn find_lib_dir(env_var: &str, _lib_name: &str) -> Option<PathBuf> {
     if let Ok(dir) = env::var(env_var) {
@@ -75,7 +87,13 @@ fn main() {
         println!("cargo:rustc-link-lib=dylib=opencv_imgcodecs4");
     }
 
-    // Tesseract + Leptonica
-    println!("cargo:rustc-link-lib=dylib=tesseract53");
-    println!("cargo:rustc-link-lib=dylib=leptonica-1.84.1");
+    // Tesseract: detect version from lib directory
+    let tess_name = find_lib_by_prefix(&tess_lib, "tesseract")
+        .unwrap_or_else(|| "tesseract55".to_string());
+    println!("cargo:rustc-link-lib=dylib={}", tess_name);
+
+    // Leptonica: detect version from lib directory
+    let lept_name = find_lib_by_prefix(&tess_lib, "leptonica")
+        .unwrap_or_else(|| "leptonica-1.84.1".to_string());
+    println!("cargo:rustc-link-lib=dylib={}", lept_name);
 }

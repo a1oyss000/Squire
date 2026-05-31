@@ -32,33 +32,35 @@ pub struct MatchResult {
 #[cfg(feature = "ffi")]
 pub fn match_template(screen: &Image, template_path: &str, threshold: f64) -> Result<MatchResult> {
     use crate::ffi::opencv::*;
-    use std::ffi::{c_int, CString};
+    use std::ffi::c_int;
 
-    let c_path = CString::new(template_path)
-        .map_err(|_| squire_error::SquireError::Vision("Invalid template path".into()))?;
+    let tmpl_img = image::open(template_path)
+        .map_err(|e| squire_error::SquireError::Vision(format!("Failed to load template: {}", e)))?
+        .to_rgb8();
+
+    let tw = tmpl_img.width() as c_int;
+    let th = tmpl_img.height() as c_int;
+    let sw = screen.width as c_int;
+    let sh = screen.height as c_int;
+
+    if tw > sw || th > sh {
+        return Err(squire_error::SquireError::Vision(
+            "Template larger than screen".into(),
+        ));
+    }
 
     unsafe {
-        let tmpl_bgr = OwnedCvMat::from_raw(cvLoadImage(c_path.as_ptr(), IMREAD_COLOR))
-            .ok_or_else(|| squire_error::SquireError::Vision(
-                format!("Failed to load template: {}", template_path),
-            ))?;
+        // Wrap template RGB data as CvMat, convert to grayscale
+        let mut tmpl_data = tmpl_img.into_raw();
+        let tmpl_mat = HeaderCvMat::new(
+            th, tw, CV_8UC3,
+            tmpl_data.as_mut_ptr() as *mut std::ffi::c_void,
+            tw * 3,
+        ).ok_or_else(|| squire_error::SquireError::Vision("Failed to create tmpl mat".into()))?;
 
-        let tmpl_size = cvGetSize(tmpl_bgr.as_ptr());
-        let tw = tmpl_size.width;
-        let th = tmpl_size.height;
-        let sw = screen.width as c_int;
-        let sh = screen.height as c_int;
-
-        if tw > sw || th > sh {
-            return Err(squire_error::SquireError::Vision(
-                "Template larger than screen".into(),
-            ));
-        }
-
-        // Convert template BGR -> grayscale
         let mut tmpl_gray = OwnedCvMat::from_raw(cvCreateMat(th, tw, CV_8UC1))
             .ok_or_else(|| squire_error::SquireError::Vision("Failed to allocate tmpl_gray".into()))?;
-        cvCvtColor(tmpl_bgr.as_ptr(), tmpl_gray.as_mut_ptr(), COLOR_BGR2GRAY);
+        cvCvtColor(tmpl_mat.as_ptr(), tmpl_gray.as_mut_ptr(), COLOR_BGR2GRAY);
 
         // Wrap screen BGRA buffer as CvMat, convert to grayscale
         let mut screen_data = screen.data.as_ref().clone();

@@ -30,15 +30,6 @@ steps:
     timeout_ms: 10000
     on_fail: skip
 
-  - action:
-      type: click
-    target:
-      type: template
-      path: templates/nikke/confirm.png
-      threshold: 0.75
-    timeout_ms: 5000
-    on_fail: skip
-
 config:
   fail_strategy: retry
   retry_count: 3

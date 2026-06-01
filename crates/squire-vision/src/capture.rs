@@ -51,7 +51,7 @@ fn capture_window_wgc(hwnd: isize) -> Result<Image> {
     use windows::Graphics::Capture::{Direct3D11CaptureFramePool, GraphicsCaptureItem};
     use windows::Graphics::DirectX::Direct3D11::IDirect3DDevice;
     use windows::Graphics::DirectX::DirectXPixelFormat;
-    use windows::Win32::Foundation::{HWND, WAIT_OBJECT_0};
+    use windows::Win32::Foundation::{HWND, POINT, RECT, WAIT_OBJECT_0};
     use windows::Win32::Graphics::Direct3D::D3D_DRIVER_TYPE_HARDWARE;
     use windows::Win32::Graphics::Direct3D11::{
         D3D11CreateDevice, D3D11_CPU_ACCESS_READ,
@@ -66,6 +66,7 @@ fn capture_window_wgc(hwnd: isize) -> Result<Image> {
         CreateDirect3D11DeviceFromDXGIDevice, IDirect3DDxgiInterfaceAccess,
     };
     use windows::Win32::System::WinRT::Graphics::Capture::IGraphicsCaptureItemInterop;
+    use windows::Win32::UI::WindowsAndMessaging::{GetClientRect, GetWindowRect};
 
     unsafe {
         // 1. Create D3D11 device
@@ -195,10 +196,45 @@ fn capture_window_wgc(hwnd: isize) -> Result<Image> {
         let _ = frame_pool.Close();
         let _ = windows::Win32::Foundation::CloseHandle(event);
 
+        // 11. Crop to client area — WGC captures the full window including
+        //     title bar, but coordinates are used as client-area offsets.
+        let hwnd_val = HWND(hwnd as *mut _);
+        let mut window_rect = RECT::default();
+        let mut client_rect = RECT::default();
+        let _ = GetWindowRect(hwnd_val, &mut window_rect);
+        let _ = GetClientRect(hwnd_val, &mut client_rect);
+
+        let mut client_origin = POINT { x: 0, y: 0 };
+        let _ = windows::Win32::Graphics::Gdi::ClientToScreen(
+            hwnd_val, &mut client_origin,
+        );
+
+        let offset_x = (client_origin.x - window_rect.left) as u32;
+        let offset_y = (client_origin.y - window_rect.top) as u32;
+        let client_w = (client_rect.right - client_rect.left) as u32;
+        let client_h = (client_rect.bottom - client_rect.top) as u32;
+
+        let client_w = client_w.min(width.saturating_sub(offset_x));
+        let client_h = client_h.min(height.saturating_sub(offset_y));
+
+        if client_w == 0 || client_h == 0 {
+            return Ok(Image { width, height, data: Arc::new(buffer) });
+        }
+
+        let mut cropped = vec![0u8; (client_w * client_h * 4) as usize];
+        for y in 0..client_h as usize {
+            let src_start = ((y + offset_y as usize) * width as usize
+                + offset_x as usize) * 4;
+            let dst_start = y * client_w as usize * 4;
+            let row_bytes = client_w as usize * 4;
+            cropped[dst_start..dst_start + row_bytes]
+                .copy_from_slice(&buffer[src_start..src_start + row_bytes]);
+        }
+
         Ok(Image {
-            width,
-            height,
-            data: Arc::new(buffer),
+            width: client_w,
+            height: client_h,
+            data: Arc::new(cropped),
         })
     }
 }

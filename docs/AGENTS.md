@@ -1,15 +1,15 @@
 <!-- Parent: ../AGENTS.md -->
-<!-- Generated: 2026-05-29 | Updated: 2026-05-29 -->
+<!-- Generated: 2026-05-29 | Updated: 2026-06-02 -->
 
 # docs
 
-## Purpose
-Project documentation and design notes.
+## 概述
+项目文档和设计笔记。
 
-## For AI Agents
+## AI Agent 指南
 
-### Working In This Directory
-- Add design docs, architecture decisions, and API documentation here
-- Use markdown format
+### 在此目录工作
+- 在此添加设计文档、架构决策和 API 文档
+- 使用 markdown 格式
 
 <!-- MANUAL: -->

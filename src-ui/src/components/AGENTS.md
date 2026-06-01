@@ -1,40 +1,40 @@
 <!-- Parent: ../AGENTS.md -->
-<!-- Generated: 2026-05-29 | Updated: 2026-05-29 -->
+<!-- Generated: 2026-05-29 | Updated: 2026-06-02 -->
 
 # components
 
-## Purpose
-React UI components for the Squire desktop app. Each component handles a specific feature area.
+## 概述
+Squire 桌面应用的 React UI 组件。每个组件负责一个特定功能区域。
 
-## Key Files
+## 关键文件
 
-| File | Description |
-|------|-------------|
-| `WindowPicker.tsx` | Dropdown to select a target window from the system window list |
-| `TaskList.tsx` | Sortable list of automation tasks with enable/disable toggles |
-| `TaskConfig.tsx` | YAML config viewer/editor for a selected task |
-| `ExecutionStatus.tsx` | Real-time execution log display |
+| 文件 | 说明 |
+|------|------|
+| `WindowPicker.tsx` | 从系统窗口列表选择目标窗口的下拉框 |
+| `TaskList.tsx` | 可排序的自动化任务列表，带启用/禁用开关 |
+| `TaskConfig.tsx` | 选中任务的 YAML 配置查看器/编辑器 |
+| `ExecutionStatus.tsx` | 实时执行日志显示 |
 
-## For AI Agents
+## AI Agent 指南
 
-### Working In This Directory
-- Components use Tauri `invoke()` for backend calls and `listen()` for events
-- Styling is Tailwind utility classes only — no separate CSS files
-- `WindowPicker` uses a custom dropdown with search filtering
-- `TaskList` supports drag-and-drop reordering via @dnd-kit
+### 在此目录工作
+- 组件使用 Tauri `invoke()` 调用后端，使用 `listen()` 监听事件
+- 样式仅使用 Tailwind 工具类 — 无独立 CSS 文件
+- `WindowPicker` 使用带搜索过滤的自定义下拉框
+- `TaskList` 通过 @dnd-kit 支持拖拽排序
 
-### Common Patterns
-- Props interfaces defined above the component export
-- Local state via `useState`, global state via `useAppStore` from Zustand
-- Async operations wrapped in try/catch with loading states
+### 常见模式
+- Props 接口定义在组件导出上方
+- 局部状态用 `useState`，全局状态用 Zustand 的 `useAppStore`
+- 异步操作包裹在 try/catch 中并带有 loading 状态
 
-## Dependencies
+## 依赖
 
-### Internal
-- `../store.ts` — Zustand store for shared state
+### 内部
+- `../store.ts` — Zustand store 共享状态
 
-### External
-- `@tauri-apps/api/core` — `invoke` for IPC commands
-- `@dnd-kit/core`, `@dnd-kit/sortable` — drag-and-drop
+### 外部
+- `@tauri-apps/api/core` — `invoke` 用于 IPC 命令
+- `@dnd-kit/core`、`@dnd-kit/sortable` — 拖拽排序
 
 <!-- MANUAL: -->

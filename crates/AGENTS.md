@@ -1,24 +1,24 @@
 <!-- Parent: ../AGENTS.md -->
-<!-- Generated: 2026-05-29 | Updated: 2026-05-29 -->
+<!-- Generated: 2026-05-29 | Updated: 2026-06-02 -->
 
 # crates
 
-## Purpose
-Container for the Rust library crates that form the core automation logic. Each crate has a single responsibility and is consumed by the Tauri app.
+## 概述
+核心自动化逻辑的 Rust 库 crate 容器。每个 crate 职责单一，由 Tauri 应用消费。
 
-## Subdirectories
+## 子目录
 
-| Directory | Purpose |
-|-----------|---------|
-| `squire-error/` | Shared error enum and Result type (see `squire-error/AGENTS.md`) |
-| `squire-vision/` | Screen capture, template matching, OCR (see `squire-vision/AGENTS.md`) |
-| `squire-input/` | Input simulation backends (see `squire-input/AGENTS.md`) |
-| `squire-engine/` | Task execution engine — config, runner, scheduler (see `squire-engine/AGENTS.md`) |
+| 目录 | 用途 |
+|------|------|
+| `squire-error/` | 共享错误枚举和 Result 类型（见 `squire-error/AGENTS.md`） |
+| `squire-vision/` | 屏幕截图、模板匹配、OCR（见 `squire-vision/AGENTS.md`） |
+| `squire-input/` | 输入模拟后端（见 `squire-input/AGENTS.md`） |
+| `squire-engine/` | 任务执行引擎 — 配置、运行器、调度器（见 `squire-engine/AGENTS.md`） |
 
-## For AI Agents
+## AI Agent 指南
 
-### Working In This Directory
-- Each crate is independent; add new crates here and register them in the root `Cargo.toml` workspace members
-- Dependency graph: `squire-error` ← `squire-vision`, `squire-input` ← `squire-engine`
+### 在此目录工作
+- 每个 crate 独立；新增 crate 后需在根 `Cargo.toml` 的 workspace members 中注册
+- 依赖关系：`squire-error` ← `squire-vision`、`squire-input` ← `squire-engine`
 
 <!-- MANUAL: -->

@@ -1,38 +1,38 @@
 <!-- Parent: ../AGENTS.md -->
-<!-- Generated: 2026-05-29 | Updated: 2026-05-29 -->
+<!-- Generated: 2026-05-29 | Updated: 2026-06-02 -->
 
 # src-tauri
 
-## Purpose
-Tauri 2 application shell. Defines IPC commands exposed to the frontend, manages application state, and wires together the engine crates.
+## 概述
+Tauri 2 应用外壳。定义暴露给前端的 IPC 命令，管理应用状态，并将各引擎 crate 组装在一起。
 
-## Key Files
+## 关键文件
 
-| File | Description |
-|------|-------------|
-| `Cargo.toml` | App dependencies — all workspace crates + Tauri |
-| `src/main.rs` | Entry point: Tauri setup, command handlers, logging init |
-| `tauri.conf.json` | Tauri config (window size, app name, capabilities) |
-| `build.rs` | Tauri build script |
+| 文件 | 说明 |
+|------|------|
+| `Cargo.toml` | 应用依赖 — 所有 workspace crate + Tauri |
+| `src/main.rs` | 入口：Tauri 初始化、命令处理器、日志配置 |
+| `tauri.conf.json` | Tauri 配置（窗口大小、应用名、权限） |
+| `build.rs` | Tauri 构建脚本 |
 
-## Subdirectories
+## 子目录
 
-| Directory | Purpose |
-|-----------|---------|
-| `src/` | Rust source for the Tauri app (see `src/AGENTS.md`) |
-| `capabilities/` | Tauri capability permission files |
-| `icons/` | Application icons |
-| `gen/` | Auto-generated Tauri schemas (do not edit) |
+| 目录 | 用途 |
+|------|------|
+| `src/` | Tauri 应用 Rust 源码（见 `src/AGENTS.md`） |
+| `capabilities/` | Tauri 权限能力文件 |
+| `icons/` | 应用图标 |
+| `gen/` | 自动生成的 Tauri schema（勿编辑） |
 
-## For AI Agents
+## AI Agent 指南
 
-### Working In This Directory
-- Add new IPC commands in `src/main.rs` and register in `generate_handler![]`
-- Use `State<AppState>` for shared state access in commands
-- Logging goes to rolling daily files via `tracing-appender`
+### 在此目录工作
+- 在 `src/main.rs` 中添加新 IPC 命令并在 `generate_handler![]` 中注册
+- 使用 `State<AppState>` 在命令中访问共享状态
+- 日志通过 `tracing-appender` 写入每日滚动文件
 
-### Testing Requirements
-- `cargo build -p squire-app` to verify compilation
-- IPC commands are tested via the frontend or integration tests
+### 测试要求
+- `cargo build -p squire-app` 验证编译
+- IPC 命令通过前端或集成测试验证
 
 <!-- MANUAL: -->

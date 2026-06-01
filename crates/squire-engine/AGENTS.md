@@ -1,50 +1,50 @@
 <!-- Parent: ../AGENTS.md -->
-<!-- Generated: 2026-05-29 | Updated: 2026-05-29 -->
+<!-- Generated: 2026-05-29 | Updated: 2026-06-02 -->
 
 # squire-engine
 
-## Purpose
-Task execution engine. Loads YAML task definitions, schedules execution against a target window, runs steps with retry/skip/pause strategies, and reports events.
+## 概述
+任务执行引擎。加载 YAML 任务定义，调度对目标窗口的执行，运行带有 retry/skip/pause 策略的步骤，并报告事件。
 
-## Key Files
+## 关键文件
 
-| File | Description |
-|------|-------------|
-| `Cargo.toml` | Dependencies: all sibling crates + tokio + serde_yaml |
-| `src/lib.rs` | Module exports: config, runner, scheduler, state |
-| `src/config.rs` | Task/step/action data model and YAML deserialization |
-| `src/runner.rs` | Step execution logic, target resolution, retry loops |
-| `src/scheduler.rs` | Engine lifecycle — spawns async task runner with channels |
-| `src/state.rs` | `TaskResult` and `TaskState` types |
+| 文件 | 说明 |
+|------|------|
+| `Cargo.toml` | 依赖：所有兄弟 crate + tokio + serde_yaml |
+| `src/lib.rs` | 模块导出：config、runner、scheduler、state |
+| `src/config.rs` | 任务/步骤/动作数据模型和 YAML 反序列化 |
+| `src/runner.rs` | 步骤执行逻辑、目标解析、重试循环 |
+| `src/scheduler.rs` | 引擎生命周期 — 通过 channel 生成异步任务运行器 |
+| `src/state.rs` | `TaskResult` 和 `TaskState` 类型 |
 
-## For AI Agents
+## AI Agent 指南
 
-### Working In This Directory
-- `config.rs` defines the YAML schema — changes here affect task file format
-- `runner.rs` is the hot path: capture → match/OCR → input → report
-- `scheduler.rs` manages the engine lifecycle via `mpsc`/`watch` channels
-- Engine communicates via `EngineCommand` (Start/Cancel) and `EngineEvent`
+### 在此目录工作
+- `config.rs` 定义 YAML schema — 修改会影响任务文件格式
+- `runner.rs` 是热路径：截图 → 匹配/OCR → 输入 → 报告
+- `scheduler.rs` 通过 `mpsc`/`watch` channel 管理引擎生命周期
+- 引擎通过 `EngineCommand`（Start/Cancel）和 `EngineEvent` 通信
 
-### Testing Requirements
+### 测试要求
 - `cargo test -p squire-engine`
-- Config parsing tests can run anywhere; runner tests need Windows + DLLs
+- 配置解析测试可在任何平台运行；runner 测试需要 Windows + DLL
 
-### Common Patterns
-- `RunContext` bundles input backend, window handle, cancel signal, and base dir
-- Steps resolve targets to `Point` then dispatch to `InputBackend`
-- Template paths resolved via `ctx.base_dir.join(path)` at runtime
-- Failure handling: per-step `on_fail` overrides task-level `fail_strategy`
+### 常见模式
+- `RunContext` 打包输入后端、窗口句柄、取消信号和基础目录
+- 步骤将目标解析为 `Point` 然后分发给 `InputBackend`
+- 模板路径通过 `ctx.base_dir.join(path)` 在运行时解析
+- 失败处理：每步的 `on_fail` 覆盖任务级 `fail_strategy`
 
-## Dependencies
+## 依赖
 
-### Internal
-- `squire-error` — error types
-- `squire-vision` — capture + matching + OCR
-- `squire-input` — input simulation
+### 内部
+- `squire-error` — 错误类型
+- `squire-vision` — 截图 + 匹配 + OCR
+- `squire-input` — 输入模拟
 
-### External
-- `tokio` + `tokio-util` — async runtime and channels
-- `serde` + `serde_yaml` — YAML config deserialization
-- `tracing` — structured logging
+### 外部
+- `tokio` + `tokio-util` — 异步运行时和 channel
+- `serde` + `serde_yaml` — YAML 配置反序列化
+- `tracing` — 结构化日志
 
 <!-- MANUAL: -->

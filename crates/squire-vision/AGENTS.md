@@ -1,55 +1,55 @@
 <!-- Parent: ../AGENTS.md -->
-<!-- Generated: 2026-05-29 | Updated: 2026-05-29 -->
+<!-- Generated: 2026-05-29 | Updated: 2026-06-02 -->
 
 # squire-vision
 
-## Purpose
-Computer vision subsystem. Handles window capture, template matching (via OpenCV FFI), and OCR (via Tesseract FFI and Windows Media OCR).
+## 概述
+计算机视觉子系统。处理窗口截图、模板匹配（通过 OpenCV FFI）和 OCR（通过 Tesseract FFI 及 Windows Media OCR）。
 
-## Key Files
+## 关键文件
 
-| File | Description |
-|------|-------------|
-| `Cargo.toml` | Dependencies: image, windows crate (Win32 + WinRT OCR) |
-| `src/lib.rs` | Module exports and DLL dependency checker |
-| `src/capture.rs` | Window capture via Win32 GDI (BitBlt) and window enumeration |
-| `src/matcher.rs` | Template matching using OpenCV FFI |
-| `src/ocr.rs` | OCR via Tesseract FFI and Windows native OCR |
+| 文件 | 说明 |
+|------|------|
+| `Cargo.toml` | 依赖：image、windows crate（Win32 + WinRT OCR） |
+| `src/lib.rs` | 模块导出和 DLL 依赖检查器 |
+| `src/capture.rs` | 窗口截图：WGC（主）+ BitBlt（备用），自动裁剪到客户区 |
+| `src/matcher.rs` | 使用 OpenCV FFI 的模板匹配 |
+| `src/ocr.rs` | 通过 Tesseract FFI 和 Windows 原生 OCR 进行文字识别 |
 
-## Subdirectories
+## 子目录
 
-| Directory | Purpose |
-|-----------|---------|
-| `src/ffi/` | FFI bindings to native libraries (see `src/ffi/AGENTS.md`) |
-| `benches/` | Criterion benchmarks for NCC matching |
+| 目录 | 用途 |
+|------|------|
+| `src/ffi/` | 原生库的 FFI 绑定（见 `src/ffi/AGENTS.md`） |
+| `benches/` | NCC 匹配的 Criterion 基准测试 |
 
-## For AI Agents
+## AI Agent 指南
 
-### Working In This Directory
-- Feature flag `ffi` (default on) enables OpenCV/Tesseract bindings
-- DLLs required at runtime: `opencv_world4100.dll`, `tesseract53.dll`
-- `check_dependencies()` verifies DLLs are loadable before use
-- Image type is `capture::Image { width, height, data: Arc<Vec<u8>> }` (BGRA32)
+### 在此目录工作
+- Feature flag `ffi`（默认开启）启用 OpenCV/Tesseract 绑定
+- 运行时需要 DLL：`opencv_world4100.dll`、`tesseract53.dll`
+- `check_dependencies()` 在使用前验证 DLL 可加载
+- 图像类型为 `capture::Image { width, height, data: Arc<Vec<u8>> }`（BGRA32）
 
-### Testing Requirements
-- `cargo test -p squire-vision` — unit tests
-- `cargo bench -p squire-vision` — NCC benchmark
-- FFI tests require DLLs in PATH
+### 测试要求
+- `cargo test -p squire-vision` — 单元测试
+- `cargo bench -p squire-vision` — NCC 基准测试
+- FFI 测试需要 DLL 在 PATH 中
 
-### Common Patterns
-- All platform-specific code gated with `#[cfg(windows)]` / `#[cfg(not(windows))]`
-- Non-Windows stubs return `SquireError::Vision("Not supported")`
-- Image data is BGRA 32-bit, top-down layout
+### 常见模式
+- 所有平台特定代码通过 `#[cfg(windows)]` / `#[cfg(not(windows))]` 门控
+- 非 Windows stub 返回 `SquireError::Vision("Not supported")`
+- 图像数据为 BGRA 32 位，自上而下布局
 
-## Dependencies
+## 依赖
 
-### Internal
-- `squire-error` — error types
+### 内部
+- `squire-error` — 错误类型
 
-### External
-- `image` 0.25 — image loading/decoding for templates
-- `windows` 0.58 — Win32 GDI capture + WinRT OCR APIs
-- OpenCV 4.10 (runtime DLL) — template matching
-- Tesseract 5.3 (runtime DLL) — OCR engine
+### 外部
+- `image` 0.25 — 模板图片加载/解码
+- `windows` 0.58 — Win32 GDI 截图 + WinRT OCR API
+- OpenCV 4.10（运行时 DLL）— 模板匹配
+- Tesseract 5.3（运行时 DLL）— OCR 引擎
 
 <!-- MANUAL: -->

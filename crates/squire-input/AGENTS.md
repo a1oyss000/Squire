@@ -1,41 +1,41 @@
 <!-- Parent: ../AGENTS.md -->
-<!-- Generated: 2026-05-29 | Updated: 2026-05-29 -->
+<!-- Generated: 2026-05-29 | Updated: 2026-06-02 -->
 
 # squire-input
 
-## Purpose
-Input simulation backends. Provides a trait-based abstraction over platform-specific input methods (Win32 API, ADB for Android emulators).
+## 概述
+输入模拟后端。提供基于 trait 的平台特定输入方法抽象（Win32 API、ADB 用于 Android 模拟器）。
 
-## Key Files
+## 关键文件
 
-| File | Description |
-|------|-------------|
-| `Cargo.toml` | Dependencies: windows crate (keyboard/mouse APIs) |
-| `src/lib.rs` | `InputBackend` trait definition and `Point` struct |
-| `src/winapi.rs` | Win32 `SendInput` implementation |
-| `src/adb.rs` | ADB-based input for Android emulators |
+| 文件 | 说明 |
+|------|------|
+| `Cargo.toml` | 依赖：windows crate（键盘/鼠标 API） |
+| `src/lib.rs` | `InputBackend` trait 定义和 `Point` 结构体 |
+| `src/winapi.rs` | Win32 `SendInput` 实现 |
+| `src/adb.rs` | 基于 ADB 的 Android 模拟器输入 |
 
-## For AI Agents
+## AI Agent 指南
 
-### Working In This Directory
-- Implement `InputBackend` trait for new input methods
-- Trait methods: `click`, `double_click`, `drag`, `key_press`
-- `Point { x: i32, y: i32 }` uses screen coordinates
+### 在此目录工作
+- 为新输入方式实现 `InputBackend` trait
+- Trait 方法：`click`、`double_click`、`drag`、`key_press`
+- `Point { x: i32, y: i32 }` 使用屏幕坐标
 
-### Testing Requirements
-- Input tests are inherently side-effectful — test on a dedicated window
-- `cargo build -p squire-input` to verify compilation
+### 测试要求
+- 输入测试本质上有副作用 — 在专用窗口上测试
+- `cargo build -p squire-input` 验证编译
 
-### Common Patterns
-- Backend implementations are `Send + Sync` for use across async tasks
-- Win32 backend uses `SendInput` with `INPUT_MOUSE` / `INPUT_KEYBOARD`
+### 常见模式
+- 后端实现为 `Send + Sync` 以便跨异步任务使用
+- Win32 后端使用 `SendInput` 配合 `INPUT_MOUSE` / `INPUT_KEYBOARD`
 
-## Dependencies
+## 依赖
 
-### Internal
-- `squire-error` — error types
+### 内部
+- `squire-error` — 错误类型
 
-### External
-- `windows` 0.58 — `Win32_UI_Input_KeyboardAndMouse`, `Win32_UI_WindowsAndMessaging`
+### 外部
+- `windows` 0.58 — `Win32_UI_Input_KeyboardAndMouse`、`Win32_UI_WindowsAndMessaging`
 
 <!-- MANUAL: -->

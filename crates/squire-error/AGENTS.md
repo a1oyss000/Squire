@@ -1,28 +1,28 @@
 <!-- Parent: ../AGENTS.md -->
-<!-- Generated: 2026-05-29 | Updated: 2026-05-29 -->
+<!-- Generated: 2026-05-29 | Updated: 2026-06-02 -->
 
 # squire-error
 
-## Purpose
-Shared error types for the entire workspace. Defines `SquireError` enum and the `Result<T>` type alias used by all crates.
+## 概述
+整个 workspace 的共享错误类型。定义 `SquireError` 枚举和所有 crate 使用的 `Result<T>` 类型别名。
 
-## Key Files
+## 关键文件
 
-| File | Description |
-|------|-------------|
-| `Cargo.toml` | Single dependency: `thiserror` |
-| `src/lib.rs` | `SquireError` enum with variants for each subsystem |
+| 文件 | 说明 |
+|------|------|
+| `Cargo.toml` | 唯一依赖：`thiserror` |
+| `src/lib.rs` | `SquireError` 枚举，包含各子系统的变体 |
 
-## For AI Agents
+## AI Agent 指南
 
-### Working In This Directory
-- Add new error variants here when introducing new failure modes
-- All variants use `#[error("...")]` for Display impl via thiserror
-- Other crates depend on this — changes here affect the entire workspace
+### 在此目录工作
+- 引入新的失败模式时在此添加新的错误变体
+- 所有变体通过 thiserror 的 `#[error("...")]` 实现 Display
+- 其他 crate 依赖此 crate — 修改会影响整个 workspace
 
-### Common Patterns
-- Variant naming: `SubsystemName(String)` for generic errors
-- Structured variants (e.g., `MatchFailed { confidence, threshold }`) for actionable errors
-- `#[from]` for automatic conversion from std types (e.g., `std::io::Error`)
+### 常见模式
+- 变体命名：`SubsystemName(String)` 用于通用错误
+- 结构化变体（如 `MatchFailed { confidence, threshold }`）用于可操作的错误
+- `#[from]` 用于从标准类型（如 `std::io::Error`）自动转换
 
 <!-- MANUAL: -->

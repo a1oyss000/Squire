@@ -1,23 +1,23 @@
 <!-- Parent: ../AGENTS.md -->
-<!-- Generated: 2026-05-29 | Updated: 2026-05-29 -->
+<!-- Generated: 2026-05-29 | Updated: 2026-06-02 -->
 
 # templates
 
-## Purpose
-Image template files used by the vision matcher for locating UI elements on screen. Organized by game/application.
+## 概述
+视觉匹配器用于定位屏幕 UI 元素的图片模板文件。按游戏/应用分类组织。
 
-## Subdirectories
+## 子目录
 
-| Directory | Purpose |
-|-----------|---------|
-| `nikke/` | Template images for NIKKE game automation |
+| 目录 | 用途 |
+|------|------|
+| `nikke/` | NIKKE 游戏自动化的模板图片 |
 
-## For AI Agents
+## AI Agent 指南
 
-### Working In This Directory
-- Templates are PNG images cropped from game screenshots
-- Referenced by task YAML files via relative path (e.g., `templates/nikke/mail_button.png`)
-- Keep templates small and distinctive for reliable matching
-- Threshold defaults to 0.8 — lower for variable UI elements
+### 在此目录工作
+- 模板为从游戏截图裁剪的 PNG 图片
+- 由任务 YAML 文件通过相对路径引用（如 `templates/nikke/mail_button.png`）
+- 保持模板小而有辨识度以确保匹配可靠
+- 阈值默认 0.8 — 对变化较大的 UI 元素可降低
 
 <!-- MANUAL: -->

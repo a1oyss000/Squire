@@ -42,6 +42,24 @@ pub fn match_template(screen: &Image, template_path: &str, threshold: f64) -> Re
     let sw = screen.width as c_int;
     let sh = screen.height as c_int;
 
+    // Generate mask from green pixels: 0 = ignore (green), 255 = match
+    let mut mask_data: Vec<u8> = Vec::with_capacity((tw * th) as usize);
+    let mut green_count = 0u32;
+    for p in tmpl_img.pixels() {
+        if p[0] == 0 && p[1] == 255 && p[2] == 0 {
+            mask_data.push(0);
+            green_count += 1;
+        } else {
+            mask_data.push(255);
+        }
+    }
+    let mask = if green_count > 0 {
+        tracing::debug!("match_template: green mask active, {} pixels masked", green_count);
+        Some(mask_data)
+    } else {
+        None
+    };
+
     tracing::debug!(
         "match_template: screen={}x{} ({} bytes), template={}x{}, path={}",
         sw, sh, screen.data.len(), tw, th, template_path
@@ -77,7 +95,7 @@ pub fn match_template(screen: &Image, template_path: &str, threshold: f64) -> Re
         squire_match_template_masked(
             screen_bgr.as_ptr(), sw, sh, 3,
             tmpl_bgr.as_ptr(), tw, th, 3,
-            std::ptr::null(),
+            mask.as_ref().map_or(std::ptr::null(), |m| m.as_ptr()),
             CV_TM_CCOEFF_NORMED,
             &mut max_val, &mut max_x, &mut max_y,
         )

@@ -134,13 +134,25 @@ pub async fn run_task_with_context(
     }
 
     match &task.success_marker {
-        Some(SuccessMarker::Template { path, threshold }) => {
+        Some(SuccessMarker::Template { path, threshold, templates }) => {
             match capture::capture_window(ctx.window_hwnd) {
                 Ok(image) => {
-                    let thr = threshold.unwrap_or(0.8);
-                    let resolved = ctx.base_dir.join(path);
-                    let path_str = resolved.to_string_lossy();
-                    if squire_vision::matcher::match_template(&image, &path_str, thr).is_err() {
+                    let thr_default = threshold.unwrap_or(0.8);
+                    let mut candidates: Vec<(&str, f64)> = Vec::new();
+                    if !path.is_empty() {
+                        candidates.push((path.as_str(), thr_default));
+                    }
+                    if let Some(tmpls) = templates {
+                        for t in tmpls {
+                            candidates.push((&t.path, t.threshold.unwrap_or(thr_default)));
+                        }
+                    }
+                    let matched = candidates.iter().any(|(tmpl_path, thr)| {
+                        let resolved = ctx.base_dir.join(tmpl_path);
+                        let path_str = resolved.to_string_lossy();
+                        squire_vision::matcher::match_template(&image, &path_str, *thr).is_ok()
+                    });
+                    if !matched {
                         return TaskResult {
                             task_name: task.name.clone(),
                             state: TaskState::Failed,
@@ -219,14 +231,39 @@ async fn execute_step(step: &StepDef, ctx: &RunContext) -> Result<()> {
 fn resolve_target(target: &StepTarget, ctx: &RunContext) -> Result<Point> {
     match target {
         StepTarget::Coordinate { x, y } => Ok(Point { x: *x, y: *y }),
-        StepTarget::Template { path, threshold } => {
+        StepTarget::Template { path, threshold, templates } => {
             let image = capture::capture_window(ctx.window_hwnd)?;
-            let thr = threshold.unwrap_or(0.8);
-            let resolved = ctx.base_dir.join(path);
-            let path_str = resolved.to_string_lossy();
-            let result = squire_vision::matcher::match_template(&image, &path_str, thr)?;
-            let screen_pt = client_to_screen(ctx.window_hwnd, result.center.x, result.center.y);
-            Ok(screen_pt)
+            let thr_default = threshold.unwrap_or(0.8);
+
+            let mut candidates: Vec<(&str, f64)> = Vec::new();
+            if !path.is_empty() {
+                candidates.push((path.as_str(), thr_default));
+            }
+            if let Some(tmpls) = templates {
+                for t in tmpls {
+                    candidates.push((&t.path, t.threshold.unwrap_or(thr_default)));
+                }
+            }
+
+            let mut tried: Vec<String> = Vec::new();
+            let mut last_err = None;
+            for (tmpl_path, thr) in &candidates {
+                let resolved = ctx.base_dir.join(tmpl_path);
+                let path_str = resolved.to_string_lossy();
+                tried.push(tmpl_path.to_string());
+                match squire_vision::matcher::match_template(&image, &path_str, *thr) {
+                    Ok(result) => {
+                        let screen_pt = client_to_screen(
+                            ctx.window_hwnd, result.center.x, result.center.y,
+                        );
+                        return Ok(screen_pt);
+                    }
+                    Err(e) => { last_err = Some(e); }
+                }
+            }
+            Err(last_err.unwrap_or_else(|| squire_error::SquireError::Config(
+                format!("No template matched. Tried: {:?}", tried)
+            )))
         }
         StepTarget::Ocr { text, region } => {
             let image = capture::capture_window(ctx.window_hwnd)?;

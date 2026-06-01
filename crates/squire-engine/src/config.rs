@@ -40,10 +40,22 @@ pub enum Action {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TemplatePath {
+    pub path: String,
+    pub threshold: Option<f64>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "type")]
 pub enum StepTarget {
     #[serde(rename = "template")]
-    Template { path: String, threshold: Option<f64> },
+    Template {
+        #[serde(default)]
+        path: String,
+        threshold: Option<f64>,
+        #[serde(default)]
+        templates: Option<Vec<TemplatePath>>,
+    },
     #[serde(rename = "ocr")]
     Ocr { text: String, region: Option<[i32; 4]> },
     #[serde(rename = "coordinate")]
@@ -77,7 +89,13 @@ pub enum FailStrategy {
 #[serde(tag = "type")]
 pub enum SuccessMarker {
     #[serde(rename = "template")]
-    Template { path: String, threshold: Option<f64> },
+    Template {
+        #[serde(default)]
+        path: String,
+        threshold: Option<f64>,
+        #[serde(default)]
+        templates: Option<Vec<TemplatePath>>,
+    },
     #[serde(rename = "ocr")]
     Ocr { text: String, region: Option<[i32; 4]> },
 }
@@ -100,6 +118,16 @@ pub fn validate_task(task: &TaskDefinition, _base_path: &Path) -> Result<()> {
                 "Step {} has zero timeout",
                 i + 1
             )));
+        }
+        if let StepTarget::Template { path, templates, .. } = &step.target {
+            let has_path = !path.is_empty();
+            let has_templates = templates.as_ref().map_or(false, |t| !t.is_empty());
+            if !has_path && !has_templates {
+                return Err(SquireError::Config(format!(
+                    "Step {} template target has no path or templates list",
+                    i + 1
+                )));
+            }
         }
     }
     Ok(())

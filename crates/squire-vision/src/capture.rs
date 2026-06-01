@@ -18,13 +18,12 @@ pub struct WindowInfo {
 
 #[cfg(windows)]
 pub fn find_window(title: &str) -> Result<isize> {
-    use windows::core::PCSTR;
-    use windows::Win32::UI::WindowsAndMessaging::FindWindowA;
+    use windows::core::PCWSTR;
+    use windows::Win32::UI::WindowsAndMessaging::FindWindowW;
 
-    let title_cstr = std::ffi::CString::new(title)
-        .map_err(|e| SquireError::WindowNotFound(e.to_string()))?;
+    let title_wide: Vec<u16> = title.encode_utf16().chain(std::iter::once(0)).collect();
 
-    let hwnd = unsafe { FindWindowA(PCSTR::null(), PCSTR(title_cstr.as_ptr() as *const u8)) }
+    let hwnd = unsafe { FindWindowW(PCWSTR::null(), PCWSTR(title_wide.as_ptr())) }
         .map_err(|_| SquireError::WindowNotFound(title.to_string()))?;
 
     if hwnd.0 == std::ptr::null_mut() {
@@ -328,18 +327,17 @@ fn capture_window_bitblt(hwnd: isize) -> Result<Image> {
 pub fn list_windows() -> Result<Vec<WindowInfo>> {
     use windows::Win32::Foundation::{BOOL, HWND, LPARAM};
     use windows::Win32::UI::WindowsAndMessaging::{
-        EnumWindows, GetWindowTextA, GetWindowTextLengthA, IsWindowVisible,
+        EnumWindows, GetWindowTextLengthW, GetWindowTextW, IsWindowVisible,
     };
 
     unsafe extern "system" fn enum_callback(hwnd: HWND, lparam: LPARAM) -> BOOL {
         let windows = &mut *(lparam.0 as *mut Vec<WindowInfo>);
         if IsWindowVisible(hwnd).as_bool() {
-            let len = GetWindowTextLengthA(hwnd);
+            let len = GetWindowTextLengthW(hwnd);
             if len > 0 {
-                let mut buf = vec![0u8; (len + 1) as usize];
-                GetWindowTextA(hwnd, &mut buf);
-                let title = String::from_utf8_lossy(&buf[..len as usize])
-                    .to_string();
+                let mut buf = vec![0u16; (len + 1) as usize];
+                let actual_len = GetWindowTextW(hwnd, &mut buf);
+                let title = String::from_utf16_lossy(&buf[..actual_len as usize]);
                 if !title.is_empty() {
                     let process_name = get_process_name(hwnd.0 as isize)
                         .unwrap_or_default();

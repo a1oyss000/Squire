@@ -8,12 +8,25 @@
   Game automation through computer vision. Write YAML, watch it work.
 </p>
 
+> [!WARNING]
+> **This project is deprecated and no longer maintained.**
+>
+> Squire was an experiment in building a desktop game automation tool with Tauri + Rust + OpenCV. The code remains available for reference and learning. Feel free to fork and continue development if you find it useful.
+>
+> **Known issues at time of archival:**
+> - Click coordinate system requires `ClientToScreen` conversion (vision → screen coordinates)
+> - WGC capture sessions should reuse D3D11 device to avoid GPU resource accumulation
+> - Template "no match" was incorrectly logged as WARN instead of DEBUG
+> - Scan loop had parallel-candidate semantics instead of priority-fallback
+> - OCR integration is Windows-only and depends on Tesseract DLLs
+
 <p align="center">
   <img src="https://img.shields.io/badge/platform-Windows-0078D4?style=flat&logo=windows&logoColor=white" alt="Windows" />
   <img src="https://img.shields.io/badge/Tauri-2.0-FFC131?style=flat&logo=tauri&logoColor=black" alt="Tauri" />
   <img src="https://img.shields.io/badge/Rust-2021-000000?style=flat&logo=rust&logoColor=white" alt="Rust" />
   <img src="https://img.shields.io/badge/React-19-61DAFB?style=flat&logo=react&logoColor=black" alt="React" />
   <img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="MIT License" />
+  <img src="https://img.shields.io/badge/status-deprecated-red.svg" alt="Deprecated" />
 </p>
 
 ---

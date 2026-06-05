@@ -1,0 +1,32 @@
+nodes:
+  go-back:
+    action: { custom: GoBack }
+
+  common-go-back:
+    action: { custom: GoBack }
+
+  common-confirm-reward:
+    recognize: { template: Common/ConfirmReward.png }
+    action: click
+
+  common-confirm-action:
+    recognize: { template: Common/ConfirmAction.png }
+    action: click
+
+  common-click-blank:
+    action: { click: [50, 400] }
+
+  navigation-ark-visible:
+    recognize: { template: Common/ArkNav.png }
+
+  navigation-enter-hall:
+    recognize: { template: Common/HallEntry.png }
+    action: click
+
+  battle-start:
+    recognize: { template: Common/BattleStart.png }
+    action: click
+
+  dialogues-skip-story:
+    recognize: { template: Common/DialogueSkip.png }
+    action: click

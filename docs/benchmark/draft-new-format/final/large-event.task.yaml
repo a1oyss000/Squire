@@ -1,0 +1,55 @@
+# ============================================================
+# LargeEvent — task 配置（面向用户）
+# ============================================================
+name: large-event
+label: 大活动
+flow: large-event
+group: [daily]
+
+options:
+  theme:
+    type: select
+    default: star-anis
+    cases: [star-anis, other]
+
+  story_priority:
+    type: select
+    default: story2-first
+    cases: [story2-first, story1-first]
+
+  content:
+    type: checkbox
+    default: [login-stamp, challenge, story, mission]
+
+  merch_bag:
+    type: switch
+    default: true
+    when_config: { theme: star-anis }
+
+resources:
+  star-anis:
+    entry_logo: LargeEvent/StarAnis/StarAnisLogo.png
+    story1_stage: LargeEvent/StarAnis/StarAnisStory1Stage.png
+    story2_normal: LargeEvent/StarAnis/StarAnisStory2StageNormal.png
+    story2_hard: [LargeEvent/StarAnis/StarAnisStory2StageHard.png, LargeEvent/StarAnis/StarAnisStory2StageHardSP.png]
+    story1_rep: LargeEvent/StarAnis/StarAnisStory1StageRepeatable.png
+    story2_normal_rep: LargeEvent/StarAnis/StarAnisStory2StageNormal.png
+    story2_hard_rep: LargeEvent/StarAnis/StarAnisStory2StageHardRepeatable.png
+  other:
+    entry_logo: LargeEvent/Other/OtherLogo.png
+    story1_stage: LargeEvent/Other/OtherStory1Stage.png
+    story2_normal: LargeEvent/Other/OtherStory2StageNormal.png
+    story2_hard: LargeEvent/Other/OtherStory2StageHard.png
+    story1_rep: LargeEvent/Other/OtherStory1StageRepeatable.png
+    story2_normal_rep: LargeEvent/Other/OtherStory2StageNormalRepeatable.png
+    story2_hard_rep: LargeEvent/Other/OtherStory2StageHardRepeatable.png
+  story2-first:
+    story_index: -1
+  story1-first:
+    story_index: 0
+
+bindings:
+  - nodes: [login-stamp, challenge, story, mission]
+    enabled_by: content
+  - nodes: [merch-bag]
+    enabled_by: merch_bag

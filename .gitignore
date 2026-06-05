@@ -20,3 +20,10 @@ Thumbs.db
 # Environment
 .env
 .env.local
+
+*.log.*
+*.log
+src-tauri/logs/
+
+# Code intelligence
+.codegraph/

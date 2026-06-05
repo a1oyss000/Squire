@@ -1,0 +1,4 @@
+nodes:
+  event-challenge:
+    recognize: { template: Common/EventChallenge.png }
+    action: click

@@ -66,7 +66,19 @@
       "Bash(cp tasks/templates/nikke/mail_button.png tasks/templates/nikke/mail_button_original.png)",
       "Bash(cp tasks/templates/nikke/mail_button_rgba.png tasks/templates/nikke/mail_button.png)",
       "Bash(python -c \"from PIL import Image; img=Image.open\\('tasks/templates/nikke/mail_button.png'\\); print\\(f'mail_button.png: {img.size} {img.mode}'\\)\")",
-      "Bash(python scripts/make_template_transparent.py tasks/templates/nikke/collect_all.png --threshold 30)"
+      "Bash(python scripts/make_template_transparent.py tasks/templates/nikke/collect_all.png --threshold 30)",
+      "Bash(git rm *)",
+      "Read(//z/z/Code/Squire/tasks/templates/**)",
+      "mcp__codegraph__codegraph_files",
+      "mcp__codegraph__codegraph_explore",
+      "Bash(cargo test *)",
+      "Bash(taskkill /F /IM executor_test-fb8cf669daf2f7f0.exe)",
+      "Bash(taskkill /F /IM benchmark_test-019637f550cc7e77.exe)",
+      "Bash(taskkill //F //IM executor_test-fb8cf669daf2f7f0.exe)",
+      "Bash(taskkill //F //IM benchmark_test-019637f550cc7e77.exe)",
+      "Bash(cp Z:/Code/Squire/tasks/*.yaml Z:/Code/Squire/resources/tasks/)",
+      "Bash(cp -r Z:/Code/Squire/tasks/templates/nikke Z:/Code/Squire/resources/tasks/templates/)",
+      "Bash(cp Z:/Code/Squire/flows/*.yaml Z:/Code/Squire/resources/flows/)"
     ]
   },
   "enableAllProjectMcpServers": true,

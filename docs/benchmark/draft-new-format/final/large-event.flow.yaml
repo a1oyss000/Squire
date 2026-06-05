@@ -1,0 +1,258 @@
+# ============================================================
+# LargeEvent — flow 节点图（面向机器：纯屏幕状态机）
+# ============================================================
+# 转移语义：
+#   默认（无标记）：进入目标节点，执行完返回，继续下一项
+#   [jumpback]：进入目标节点，执行完返回，从 next 列表顶部重新开始
+# ============================================================
+entry: main
+
+includes:
+  - use: shared/go-back
+    with: { target_page: main-page-entered }
+  - use: shared/event-challenge
+
+nodes:
+  # @group 进入活动
+  main:
+    action: { custom: MembershipCheck }
+    next:
+      - start
+      - navigation-enter-hall [jumpback]
+
+  start:
+    recognize: { and: [navigation-ark-visible] }
+    next:
+      - entry
+      - end-task
+
+  entry:
+    recognize: { template: $entry_logo, roi: [824,571,145,68] }
+    action: click
+    next:
+      - main-page-flow
+      - entry
+
+  # @group 主页面调度
+  main-page-flow:
+    recognize: { and: [main-page-entered] }
+    pre_wait: { freeze: 500, roi: [446,539,389,82] }
+    next:
+      - login-stamp [jumpback]
+      - challenge [jumpback]
+      - story [jumpback]
+      - mission [jumpback]
+      - merch-bag [jumpback]
+      - end-task
+
+  main-page-entered:
+    recognize: { ocr: ".*活动地.*", roi: [2,11,82,30] }
+
+  # @group 子任务:签到
+  login-stamp:
+    max_hit: 1
+    timeout: 60000
+    recognize: { ocr: ".*签到.*", roi: [485,536,308,79] }
+    action: click
+    next:
+      - login-stamp-claim
+      - go-back
+
+  login-stamp-claim:
+    recognize: { ocr: "全部领取", roi: [651,649,162,37] }
+    action: click
+    post_wait: 1000
+    next:
+      - common-confirm-reward [jumpback]
+
+  # @group 子任务:挑战
+  challenge:
+    max_hit: 1
+    timeout: 60000
+    recognize: { ocr: ".*挑战.*", roi: [485,536,308,79], replace: [["排","挑"]] }
+    action: click
+    post_wait: 500
+    next:
+      - challenge-start
+      - go-back
+
+  challenge-start:
+    max_hit: 1
+    next:
+      - event-challenge
+
+  # @group 子任务:剧情
+  story:
+    max_hit: 1
+    timeout: 60000
+    recognize: { ocr: ".*STORY.*", roi: [485,536,308,79], order_by: Vertical, index: $story_index }
+    action: click
+    next:
+      - story-event-page
+
+  story-event-page:
+    recognize: { and: [story-visible] }
+    action: { click: [150, 650] }
+    pre_wait: { freeze: 500, roi: [314,413,661,294] }
+    next:
+      - story-red-dot-click
+      - common-click-blank [jumpback]
+
+  story-visible:
+    recognize: { ocr: "剧情活动", roi: [5,18,50,16] }
+
+  story-red-dot-click:
+    recognize: { ocr: ".*剩余.*", roi: [314,413,661,294] }
+    action: { click: { offset: [0,-50,0,0] } }
+    post_wait: 500
+    next:
+      - stage-page-flow
+
+  stage-page-entered:
+    recognize: { ocr: ".*活动关.*", roi: [5,18,50,16] }
+
+  stage-page-flow:
+    recognize: { and: [stage-page-entered] }
+    pre_wait: { freeze: 500, roi: [494,505,294,131] }
+    next:
+      - stage-battle-flow
+
+  stage-battle-flow:
+    next:
+      - battle-start [jumpback]
+      - story1-stage-click [jumpback]
+      - story2-normal-click [jumpback]
+      - story2-hard-click [jumpback]
+      - dialogues-skip-story [jumpback]
+      - stage-quick-flow
+
+  story1-stage-click:
+    max_hit: 1
+    recognize: { template: $story1_stage, roi: [314,103,661,604], order_by: Vertical, index: -1 }
+    action: click
+    post_wait: 500
+
+  story2-normal-click:
+    max_hit: 1
+    recognize: { template: $story2_normal, roi: [314,103,661,604], order_by: Vertical, index: -1 }
+    action: click
+    post_wait: 500
+
+  story2-hard-click:
+    max_hit: 1
+    recognize: { template: $story2_hard, roi: [314,103,661,604], order_by: Vertical, index: -1 }
+    action: { click: { offset: [70,-70,0,0] } }
+    post_wait: 500
+
+  stage-quick-flow:
+    next:
+      - battle-start [jumpback]
+      - story1-rep-click [jumpback]
+      - story2-normal-rep-click [jumpback]
+      - story2-hard-rep-click [jumpback]
+      - dialogues-skip-story [jumpback]
+      - go-back
+
+  story1-rep-click:
+    recognize: { template: $story1_rep, roi: [314,103,661,604], order_by: Vertical, index: -1 }
+    action: click
+    post_wait: 500
+
+  story2-normal-rep-click:
+    recognize: { template: $story2_normal_rep, roi: [314,103,661,604], order_by: Vertical, index: -1 }
+    action: click
+    post_wait: 500
+
+  story2-hard-rep-click:
+    recognize: { template: $story2_hard_rep, roi: [314,103,661,604], order_by: Vertical, index: -1 }
+    action: click
+    post_wait: 500
+
+  # @group 子任务:任务
+  mission:
+    max_hit: 1
+    timeout: 60000
+    recognize: { template: Common/RedDot.png, roi: [1250,112,30,107] }
+    action: { click: { offset: [-10,10,0,0] } }
+    next:
+      - mission-flow
+
+  mission-flow:
+    recognize: { and: [mission-visible] }
+    next:
+      - mission-red-dot-click
+
+  mission-visible:
+    recognize: { ocr: ".*全部.*", roi: [680,624,137,35] }
+
+  mission-red-dot-click:
+    recognize: { template: Common/PassRedDot.png, roi: [453,106,375,59] }
+    action: { click: { offset: [-10,10,0,0] } }
+    next:
+      - mission-claimed-flow
+      - mission-claim-all [jumpback]
+      - common-confirm-reward [jumpback]
+      - mission-red-dot-click
+
+  mission-claimed-flow:
+    recognize: { color: { roi: [680,624,137,35], lower: [180,180,180], upper: [220,220,220], count: 100 } }
+    next:
+      - common-go-back
+
+  mission-claim-all:
+    recognize: { ocr: ".*全部.*", roi: [680,624,137,35] }
+    action: click
+
+  # @group 子任务:周边包包 (StarAnis专属)
+  merch-bag:
+    max_hit: 1
+    timeout: 60000
+    recognize: { ocr: "周边包包", roi: [1208,130,63,21] }
+    action: click
+    post_wait: 1000
+    next:
+      - merch-lottery-click
+      - merch-gacha-click
+
+  merch-lottery-click:
+    recognize: { ocr: "抽取刮刮乐周边", roi: [681,417,106,102] }
+    action: click
+    next:
+      - lottery-complete
+      - lottery-play-click [jumpback]
+      - merch-lottery-click
+
+  merch-gacha-click:
+    recognize: { ocr: "抽取周边", roi: [1212,166,58,21] }
+    action: click
+    post_wait: 500
+    next:
+      - lottery-gray-button
+      - lottery-play-click [jumpback]
+      - go-back
+
+  lottery-play-click:
+    recognize: { ocr: ".*抽取.*", roi: [589,515,101,29] }
+    action: { click: { repeat: 3, interval: 500 } }
+    next:
+      - lottery-complete
+      - merch-lottery-click
+      - lottery-play-click
+
+  lottery-complete:
+    recognize: { or: [lottery-gray-button, lottery-run-out] }
+    next:
+      - lottery-confirm-click
+      - go-back
+
+  lottery-gray-button:
+    recognize: { color: { roi: [646,488,149,37], lower: [100,100,100], upper: [180,180,180], count: 4000 } }
+
+  lottery-run-out:
+    recognize: { ocr: ".*不足.*", roi: [542,343,188,33] }
+
+  lottery-confirm-click:
+    recognize: { template: Common/ConfirmWithCircle.png, roi: [489,490,36,33] }
+    action: click
+    next:
+      - go-back

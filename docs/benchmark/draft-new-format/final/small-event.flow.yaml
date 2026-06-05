@@ -1,0 +1,141 @@
+# ============================================================
+# SmallEvent — flow 节点图（面向机器：纯屏幕状态机）
+# ============================================================
+# 转移语义：
+#   默认（无标记）：进入目标节点，执行完返回，继续下一项
+#   [jumpback]：进入目标节点，执行完返回，从 next 列表顶部重新开始
+# ============================================================
+entry: main
+
+includes:
+  - use: shared/go-back
+    with: { target_page: main-page-entered }
+
+nodes:
+  # @group 进入活动
+  main:
+    action: { custom: MembershipCheck }
+    next:
+      - start
+      - navigation-enter-hall [jumpback]
+
+  start:
+    recognize: { and: [navigation-ark-visible] }
+    next:
+      - entry
+      - end-task
+
+  entry:
+    recognize: { template: $entry_logo, roi: [824,571,145,68] }
+    action: click
+    next:
+      - main-page-flow
+      - entry
+
+  # @group 主页面调度
+  main-page-flow:
+    recognize: { and: [main-page-entered] }
+    action: { click: [150, 650] }
+    next:
+      - challenge [jumpback]
+      - story [jumpback]
+      - mission [jumpback]
+      - end-task
+
+  main-page-entered:
+    recognize: { ocr: ".*剧情.*", roi: [2,11,82,30] }
+
+  # @group 子任务:挑战
+  challenge:
+    max_hit: 1
+    timeout: 60000
+    recognize: { ocr: ".*挑战.*", roi: [485,536,308,79], replace: [["排","挑"]] }
+    action: click
+    next:
+      - challenge-start
+      - go-back
+
+  challenge-start:
+    max_hit: 1
+    next:
+      - event-challenge
+
+  # @group 子任务:剧情
+  story:
+    max_hit: 1
+    timeout: 60000
+    recognize: { ocr: ".*加成.*", roi: [314,413,661,294] }
+    action: { click: { offset: [0,-50,0,0] } }
+    next:
+      - stage-page-flow
+
+  stage-page-entered:
+    recognize: { ocr: ".*活动关.*", roi: [5,18,50,16] }
+
+  stage-page-flow:
+    recognize: { and: [stage-page-entered] }
+    next:
+      - stage-battle-flow
+
+  stage-battle-flow:
+    next:
+      - battle-start [jumpback]
+      - stage-normal-click [jumpback]
+      - stage-hard-click [jumpback]
+      - dialogues-skip-story [jumpback]
+      - stage-quick-flow
+
+  stage-quick-flow:
+    next:
+      - battle-start [jumpback]
+      - stage-normal-rep-click [jumpback]
+      - stage-hard-rep-click [jumpback]
+      - dialogues-skip-story [jumpback]
+      - go-back
+
+  stage-normal-click:
+    max_hit: 1
+    recognize: { template: $stage_normal, roi: [314,103,661,604], order_by: Vertical, index: -1 }
+    action: click
+
+  stage-hard-click:
+    max_hit: 1
+    recognize: { template: $stage_hard, roi: [314,103,661,604], order_by: Vertical, index: -1 }
+    action: click
+
+  stage-normal-rep-click:
+    recognize: { template: $stage_normal_rep, roi: [314,103,661,604], order_by: Vertical, index: -1 }
+    action: click
+
+  stage-hard-rep-click:
+    recognize: { template: $stage_hard_rep, roi: [314,103,661,604], order_by: Vertical, index: -1 }
+    action: click
+
+  # @group 子任务:任务
+  mission:
+    max_hit: 1
+    timeout: 60000
+    recognize: { ocr: ".*任务.*", roi: [314,413,661,294] }
+    action: click
+    next:
+      - mission-flow
+
+  mission-flow:
+    recognize: { and: [mission-visible] }
+    next:
+      - mission-claimed-flow
+      - mission-claim-all [jumpback]
+      - common-confirm-reward [jumpback]
+      - common-confirm-action [jumpback]
+
+  mission-visible:
+    recognize: { ocr: ".*全部.*", roi: [680,624,137,35] }
+
+  mission-claimed-flow:
+    recognize: { color: { roi: [680,624,137,35], lower: [105,105,105], upper: [122,122,122], count: 100 } }
+    next:
+      - common-go-back
+
+  mission-claim-all:
+    recognize: { ocr: ".*全部.*", roi: [680,624,137,35] }
+    action: click

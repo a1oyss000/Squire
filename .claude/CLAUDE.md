@@ -1,65 +1,121 @@
 <!-- OMC:START -->
 <!-- OMC:VERSION:4.14.4 -->
 
-# oh-my-claudecode - Intelligent Multi-Agent Orchestration
+# Squire — Game Automation Engine
 
-You are running with oh-my-claudecode (OMC), a multi-agent orchestration layer for Claude Code.
-Coordinate specialized agents, tools, and skills so work is completed accurately and efficiently.
+A Tauri desktop app that automates game tasks using computer vision (WGC screen capture, OpenCV template matching, Tesseract OCR) and simulated input (Win32 API / ADB).
 
-<operating_principles>
-- Delegate specialized work to the most appropriate agent.
-- Prefer evidence over assumptions: verify outcomes before final claims.
-- Choose the lightest-weight path that preserves quality.
-- Consult official docs before implementing with SDKs/frameworks/APIs.
-</operating_principles>
+## Architecture
 
-<delegation_rules>
-Delegate for: multi-file changes, refactors, debugging, reviews, planning, research, verification.
-Work directly for: trivial ops, small clarifications, single commands.
-Route code to `executor` (use `model=opus` for complex work). Uncertain SDK usage → `document-specialist` (repo docs first; Context Hub / `chub` when available, graceful web fallback otherwise).
-</delegation_rules>
+```
+src-ui/             React (TypeScript, Zustand, Tailwind) — task list, window picker, execution log
+src-tauri/          Tauri v2 (Rust) — command handlers, logging, admin escalation
+crates/
+  squire-engine/    Core engine — YAML schema, loader, executor, scheduler
+  squire-vision/    CV layer — WGC capture, NCC template matching, Tesseract OCR
+  squire-input/     Input backends — Win32 mouse/keyboard, ADB
+  squire-error/     Shared error types
+```
 
-<model_routing>
-`haiku` (quick lookups), `sonnet` (standard), `opus` (architecture, deep analysis).
-Direct writes OK for: `~/.claude/**`, `.omc/**`, `.claude/**`, `CLAUDE.md`, `AGENTS.md`.
-</model_routing>
+## Engine crate (`squire-engine/src/`)
 
-<skills>
-Invoke via `/oh-my-claudecode:<name>`. Trigger patterns auto-detect keywords.
-Tier-0 workflows include `autopilot`, `ultrawork`, `ralph`, `team`, and `ralplan`.
-Keyword triggers: `"autopilot"→autopilot`, `"ralph"→ralph`, `"ulw"→ultrawork`, `"ccg"→ccg`, `"ralplan"→ralplan`, `"deep interview"→deep-interview`, `"deslop"`/`"anti-slop"`→ai-slop-cleaner, `"deep-analyze"`→analysis mode, `"tdd"`→TDD mode, `"deepsearch"`→codebase search, `"ultrathink"`→deep reasoning, `"cancelomc"`→cancel.
-Team orchestration is explicit via `/team`.
-Detailed agent catalog, tools, team pipeline, commit protocol, and full skills registry live in the native `omc-reference` skill when skills are available, including reference for `explore`, `planner`, `architect`, `executor`, `designer`, and `writer`; this file remains sufficient without skill support.
-</skills>
+| Module | Role |
+|--------|------|
+| `schema/` | YAML data models: `TaskDocument`, `FlowDocument`, `NodeDef`, `RecognizeCondition`, `Action` |
+| `loader.rs` | Parse task.yaml + flow.yaml, resolve `$variables`, merge shared `.flow.yaml` templates, compute `disabled_nodes` from bindings |
+| `executor.rs` | Runtime: call-stack based graph walker, vision matching loop, action dispatch, timeout/max-hit skip logic |
+| `recognize.rs` | `VisionProvider` trait + `evaluate()` — template, OCR, color, AND/OR composite conditions |
+| `action.rs` | Execute primitive actions: click, click_at, click_offset, click_repeat, custom |
+| `scheduler.rs` | `EngineHandle` — channel-based command/event interface, one tokio task per task file |
+| `state.rs` | `TaskState` enum (Pending/Running/Success/Failed/Skipped/Cancelled), `TaskResult` |
+| `trace.rs` | Capped ring buffer (10K entries), JSONL dump |
+| `vision_impl.rs` | `WgcVisionProvider` — adapts `squire-vision` into the engine's `VisionProvider` trait |
 
-<verification>
-Verify before claiming completion. Size appropriately: small→haiku, standard→sonnet, large/security→opus.
-If verification fails, keep iterating.
-</verification>
+### Data flow
 
-<execution_protocols>
-Broad requests: explore first, then plan. 2+ independent tasks in parallel. `run_in_background` for builds/tests.
-Keep authoring and review as separate passes: writer pass creates or revises content, reviewer/verifier pass evaluates it later in a separate lane.
-Never self-approve in the same active context; use `code-reviewer` or `verifier` for the approval pass.
-Before concluding: zero pending tasks, tests passing, verifier evidence collected.
-</execution_protocols>
+```
+resources/
+  tasks/<name>.yaml ──┐
+                       ├──► loader ──► LoadedTask ──► Executor ──► TaskResult
+  flows/<name>.flow.yaml─┘               │               │
+                                          │               ▼
+                                  $var substitution    TraceLog
+                                  binding→disabled     EngineEvents → UI
+```
 
-<hooks_and_context>
-Hooks inject `<system-reminder>` tags. Key patterns: `hook success: Success` (proceed), `[MAGIC KEYWORD: ...]` (invoke skill), `The boulder never stops` (ralph/ultrawork active).
-Persistence: `<remember>` (7 days), `<remember priority>` (permanent).
-Kill switches: `DISABLE_OMC`, `OMC_SKIP_HOOKS` (comma-separated).
-</hooks_and_context>
+### Directory layout
 
-<cancellation>
-`/oh-my-claudecode:cancel` ends execution modes. Cancel when done+verified or blocked. Don't cancel if work incomplete.
-</cancellation>
+```
+resources/
+  tasks/                  Task YAML + template images
+    <name>.yaml           Task metadata (name, label, flow, options, bindings)
+    templates/            PNG templates referenced in flow recognize conditions
+  flows/                  Flow YAML + shared includes
+    <name>.flow.yaml      Node graph (entry + nodes)
+    shared/               Reusable .flow.yaml snippets ($variable substitution)
+```
 
-<worktree_paths>
-State: `.omc/state/`, `.omc/state/sessions/{sessionId}/`, `.omc/notepad.md`, `.omc/project-memory.json`, `.omc/plans/`, `.omc/research/`, `.omc/logs/`
-</worktree_paths>
+### Task format (two files)
 
-## Setup
+**resources/tasks/<name>.yaml** — metadata, options, resources, bindings:
+```yaml
+name: my-task
+label: My Task
+flow: my-flow
+group: [optional]
+options:
+  difficulty:
+    type: select
+    default: easy
+    cases: [easy, hard]
+resources:
+  easy:
+    threshold: "0.8"
+  hard:
+    threshold: "0.95"
+bindings:
+  - nodes: [bonus-node]
+    enabled_by: enable_bonus
+```
 
-Say "setup omc" or run `/oh-my-claudecode:omc-setup`.
+**resources/flows/<name>.flow.yaml** — state machine graph:
+```yaml
+entry: start-node
+nodes:
+  start-node:
+    action: click
+    next: [next-node, end-task]
+  next-node:
+    recognize:
+      template: resources/tasks/templates/button.png
+    action:
+      click: [100, 200]
+    pre_wait: { freeze: 500 }
+    post_wait: 1000
+    max_hit: 3
+    timeout: 30000
+    next: [end-task]
+```
+
+**Shared templates** in `resources/flows/shared/*.flow.yaml` are referenced via `includes: [{use: template_name, with: {...}}]`.
+
+### Key recognize conditions
+- `template` — NCC template matching with threshold
+- `ocr` — Tesseract text recognition with replacements
+- `color` — pixel range counting in ROI
+- `and` / `or` — composite conditions referencing other nodes
+
+## Build & Test
+
+```bash
+cargo build                    # full workspace
+cargo test -p squire-engine    # engine unit tests
+cargo clippy                   # lint
+```
+
+## UI
+
+React + Zustand + Tailwind. Components: `TaskList`, `TaskConfig`, `WindowPicker`, `ExecutionStatus`.
+Tauri commands: `get_tasks`, `get_task_config`, `get_task_options`, `list_windows`, `start_execution`, `stop_execution`.
 
 <!-- OMC:END -->

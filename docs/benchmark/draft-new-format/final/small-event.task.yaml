@@ -1,0 +1,35 @@
+# ============================================================
+# SmallEvent — task 配置（面向用户）
+# ============================================================
+name: small-event
+label: 小活动
+flow: small-event
+group: [daily]
+
+options:
+  theme:
+    type: select
+    default: b-side-idol
+    cases: [b-side-idol, other]
+
+  content:
+    type: checkbox
+    default: [challenge, story, mission]
+
+resources:
+  b-side-idol:
+    entry_logo: SmallEvent/B-SideIdol/B-SideIdolLogo.png
+    stage_normal: SmallEvent/B-SideIdol/B-SideIdolStageNormal.png
+    stage_hard: SmallEvent/B-SideIdol/B-SideIdolStageHard.png
+    stage_normal_rep: SmallEvent/B-SideIdol/B-SideIdolStageNormalRepeatable.png
+    stage_hard_rep: SmallEvent/B-SideIdol/B-SideIdolStageHardRepeatable.png
+  other:
+    entry_logo: SmallEvent/Other/OtherLogo.png
+    stage_normal: SmallEvent/Other/OtherStageNormal.png
+    stage_hard: SmallEvent/Other/OtherStageHard.png
+    stage_normal_rep: SmallEvent/Other/OtherStageNormalRepeatable.png
+    stage_hard_rep: SmallEvent/Other/OtherStageHardRepeatable.png
+
+bindings:
+  - nodes: [challenge, story, mission]
+    enabled_by: content

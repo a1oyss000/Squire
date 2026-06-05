@@ -7,6 +7,7 @@ edition.workspace = true
 squire-error = { workspace = true }
 squire-vision = { workspace = true }
 squire-input = { workspace = true }
+anyhow = { workspace = true }
 serde = { workspace = true }
 serde_yaml = { workspace = true }
 tokio = { workspace = true }

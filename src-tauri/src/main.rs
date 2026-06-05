@@ -1,11 +1,10 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
-use squire_engine::config::{self, TaskDefinition};
-use squire_engine::runner::{EngineCommand, EngineEvent};
-use squire_engine::scheduler;
+use squire_engine::scheduler::{self, EngineCommand, EngineEvent};
 use squire_engine::state::TaskResult;
 use squire_input::winapi::WinApiBackend;
 use squire_vision::capture::{self, WindowInfo};
+use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 use tauri::{Emitter, Manager, State};
@@ -15,6 +14,7 @@ use tracing_subscriber::{fmt, layer::SubscriberExt, util::SubscriberInitExt, Env
 
 struct AppState {
     tasks_dir: PathBuf,
+    flows_dir: PathBuf,
     results: Mutex<Vec<TaskResult>>,
     engine_cmd: Mutex<Option<mpsc::Sender<EngineCommand>>>,
 }
@@ -55,7 +55,14 @@ fn safe_task_path(tasks_dir: &std::path::Path, name: &str) -> Result<PathBuf, St
     Ok(path)
 }
 
-// PLACEHOLDER_COMMANDS
+#[tauri::command]
+fn get_task_options(state: State<AppState>, name: String) -> Result<String, String> {
+    let path = safe_task_path(&state.tasks_dir, &name)?;
+    let content = std::fs::read_to_string(&path).map_err(|e| e.to_string())?;
+    let doc: serde_yaml::Value = serde_yaml::from_str(&content).map_err(|e| e.to_string())?;
+    let options = doc.get("options").cloned().unwrap_or(serde_yaml::Value::Null);
+    serde_yaml::to_string(&options).map_err(|e| e.to_string())
+}
 
 #[tauri::command]
 fn list_windows() -> Vec<WindowInfo> {
@@ -79,21 +86,15 @@ async fn start_execution(
     }
 
     let dir = &state.tasks_dir;
-    let mut tasks: Vec<TaskDefinition> = Vec::new();
+    let mut task_paths: Vec<PathBuf> = Vec::new();
     for name in &task_names {
         let path = safe_task_path(dir, name)?;
-        match config::load_task(&path) {
-            Ok(task) => tasks.push(task),
-            Err(e) => {
-                tracing::warn!("Failed to load {}: {}", name, e);
-                return Err(format!("Failed to load task '{}': {}", name, e));
-            }
-        }
+        task_paths.push(path);
     }
 
     let input = Arc::new(WinApiBackend::new());
-    let base_dir = state.tasks_dir.clone();
-    let handle = scheduler::create_engine(tasks, input, hwnd, base_dir);
+    let flows_dir = state.flows_dir.clone();
+    let handle = scheduler::create_engine(task_paths, flows_dir, HashMap::new(), input, hwnd);
 
     *state.engine_cmd.lock().unwrap() = Some(handle.cmd_tx.clone());
     handle.cmd_tx.send(EngineCommand::Start).await.map_err(|e| e.to_string())?;
@@ -106,16 +107,18 @@ async fn start_execution(
                 EngineEvent::TaskStarted(name) => {
                     let _ = app_clone.emit("engine-event", format!("started:{}", name));
                 }
-                EngineEvent::StepCompleted { task, step_index } => {
-                    let _ = app_clone.emit("engine-event", format!("step_ok:{}:{}", task, step_index));
+                EngineEvent::NodeEntered { task, node } => {
+                    let _ = app_clone.emit("engine-event", format!("node_enter:{}:{}", task, node));
                 }
-                EngineEvent::StepFailed { task, step_index, error } => {
-                    let _ = app_clone.emit("engine-event", format!("step_fail:{}:{}:{}", task, step_index, error));
+                EngineEvent::NodeCompleted { task, node } => {
+                    let _ = app_clone.emit("engine-event", format!("node_ok:{}:{}", task, node));
+                }
+                EngineEvent::NodeSkipped { task, node, reason } => {
+                    let _ = app_clone.emit("engine-event", format!("node_skip:{}:{}:{}", task, node, reason));
                 }
                 EngineEvent::TaskCompleted(result) => {
                     let _ = app_clone.emit("engine-event", format!("completed:{}:{:?}", result.task_name, result.state));
                 }
-                _ => {}
             }
         }
         let _ = app_clone.emit("engine-event", "done".to_string());
@@ -165,23 +168,24 @@ fn main() {
             tracing::info!("Starting Squire");
             tracing::info!("Logs directory: {}", logs_dir.display());
 
-            // Resolve tasks directory:
-            // In dev mode, use the project root's tasks/ directory.
-            // In production, use a tasks/ dir next to the resource path.
-            let tasks_dir = if cfg!(debug_assertions) {
-                // CARGO_MANIFEST_DIR points to src-tauri/ at compile time
+            // Resolve resources directory:
+            // In dev mode, use the project root's resources/ directory.
+            // In production, use the Tauri resource_dir.
+            let resources_dir = if cfg!(debug_assertions) {
                 let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-                manifest_dir.parent().unwrap().join("tasks")
+                manifest_dir.parent().unwrap().join("resources")
             } else {
                 app.path().resource_dir()
                     .expect("failed to resolve resource dir")
-                    .join("tasks")
             };
+            let tasks_dir = resources_dir.join("tasks");
+            let flows_dir = resources_dir.join("flows");
 
             tracing::info!("Tasks directory: {}", tasks_dir.display());
 
             app.manage(AppState {
                 tasks_dir,
+                flows_dir,
                 results: Mutex::new(Vec::new()),
                 engine_cmd: Mutex::new(None),
             });
@@ -191,6 +195,7 @@ fn main() {
         .invoke_handler(tauri::generate_handler![
             get_tasks,
             get_task_config,
+            get_task_options,
             list_windows,
             start_execution,
             stop_execution,

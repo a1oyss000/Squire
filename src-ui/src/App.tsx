@@ -16,15 +16,14 @@ function App() {
 
   useEffect(() => {
     loadTasks();
-    let unlisten: (() => void) | undefined;
-    listen<string>('engine-event', (event) => {
+    const unlistenPromise = listen<string>('engine-event', (event) => {
       const msg = event.payload;
       setLogs((prev) => [...prev, msg]);
       if (msg === 'done') {
         setRunning(false);
       }
-    }).then((fn) => { unlisten = fn; });
-    return () => { unlisten?.(); };
+    });
+    return () => { unlistenPromise.then((fn) => fn()); };
   }, []);
 
   async function loadTasks() {

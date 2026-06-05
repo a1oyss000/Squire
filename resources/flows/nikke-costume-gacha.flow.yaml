@@ -1,0 +1,24 @@
+entry: root
+nodes:
+  root:
+    next: [click-more]
+
+  click-more:
+    recognize:
+      template: resources/tasks/templates/nikke/more.png
+    action: click
+    post_wait: 2000
+    next: [click-costume-draw]
+
+  click-costume-draw:
+    recognize:
+      template: resources/tasks/templates/nikke/costume_draw_button.png
+    action: click
+    post_wait: 2000
+    next: [click-draw-button]
+
+  click-draw-button:
+    recognize:
+      template: resources/tasks/templates/nikke/draw_button.png
+    action: click
+    next: [end-task]

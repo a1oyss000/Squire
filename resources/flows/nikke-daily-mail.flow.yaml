@@ -1,0 +1,17 @@
+entry: root
+nodes:
+  root:
+    next: [click-mail]
+
+  click-mail:
+    recognize:
+      template: resources/tasks/templates/nikke/mail_button.png
+    action: click
+    post_wait: 1500
+    next: [click-collect-all]
+
+  click-collect-all:
+    recognize:
+      template: resources/tasks/templates/nikke/collect_all.png
+    action: click
+    next: [end-task]

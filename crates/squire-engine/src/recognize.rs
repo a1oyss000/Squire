@@ -59,7 +59,7 @@ pub fn evaluate(
 ) -> Result<RecognizeResult> {
     match cond {
         RecognizeCondition::Template(t) => {
-            let pos = vision.match_template(image, &t.template, t.roi, 0.8)?;
+            let pos = vision.match_template(image, &t.template, t.roi, t.threshold)?;
             Ok(RecognizeResult { matched: pos.is_some(), position: pos })
         }
         RecognizeCondition::Ocr(o) => {

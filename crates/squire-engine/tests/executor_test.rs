@@ -7,7 +7,7 @@ use squire_engine::schema::flow::{NextItem, NodeDef};
 use squire_error::Result;
 use squire_input::{InputBackend, Point};
 use squire_vision::capture::Image;
-use tokio::sync::watch;
+use tokio::sync::{mpsc, watch};
 
 // ---- MockVisionProvider -------------------------------------------------------
 
@@ -133,9 +133,10 @@ fn make_task_with_disabled(
 
 fn default_executor(task: LoadedTask) -> (Executor, watch::Sender<bool>) {
     let (cancel_tx, cancel_rx) = watch::channel(false);
+    let (event_tx, _event_rx) = mpsc::channel(64);
     let vision = Arc::new(MockVisionProvider::always_match());
     let input = Arc::new(MockInputBackend::new());
-    let exec = Executor::new(task, vision, input, cancel_rx, ExecutorConfig::default());
+    let exec = Executor::new(task, vision, input, cancel_rx, ExecutorConfig::default(), event_tx);
     (exec, cancel_tx)
 }
 
@@ -236,6 +237,7 @@ async fn test_cancel() {
         recognize: Some(RecognizeCondition::Template(TemplateCondition {
             template: "never_match.png".into(),
             roi: None,
+            threshold: 0.8,
             order_by: None,
             index: None,
         })),
@@ -252,10 +254,11 @@ async fn test_cancel() {
 
     let task = make_task("test", "start", nodes);
     let (cancel_tx, cancel_rx) = watch::channel(false);
+    let (event_tx, _event_rx) = mpsc::channel(64);
     // Use a vision provider where "never_match.png" returns false
     let vision = Arc::new(MockVisionProvider::new(HashMap::new()));
     let input = Arc::new(MockInputBackend::new());
-    let mut exec = Executor::new(task, vision, input, cancel_rx, ExecutorConfig { retry_interval_ms: 10 });
+    let mut exec = Executor::new(task, vision, input, cancel_rx, ExecutorConfig { retry_interval_ms: 10 }, event_tx);
 
     tokio::spawn(async move {
         tokio::time::sleep(std::time::Duration::from_millis(50)).await;

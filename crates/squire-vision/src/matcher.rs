@@ -118,9 +118,9 @@ pub fn match_template(screen: &Image, template_path: &str, threshold: f64) -> Re
             confidence: max_val,
         })
     } else {
-        Err(squire_error::SquireError::Vision(format!(
-            "No match found: best confidence {:.3} < threshold {:.3}",
-            max_val, threshold
-        )))
+        Err(squire_error::SquireError::MatchFailed {
+            confidence: max_val,
+            threshold,
+        })
     }
 }

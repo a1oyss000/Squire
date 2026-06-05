@@ -1,13 +1,17 @@
 entry: root
 nodes:
   root:
-    next: [click-more]
+    # 按顺序扫描：先尝试 click-more，未匹配/超时则自动回退到 click-costume-draw
+    # 有 more 按钮 → 匹配 click-more → 点击 → 进入 click-costume-draw
+    # 无 more 按钮 → click-more 超时 → 自动跳过 → 直接匹配 click-costume-draw
+    next: [click-more, click-costume-draw]
 
   click-more:
     recognize:
       template: resources/tasks/templates/nikke/more.png
     action: click
     post_wait: 2000
+    timeout: 5000       # 5秒内未匹配则永久跳过
     next: [click-costume-draw]
 
   click-costume-draw:
@@ -15,10 +19,12 @@ nodes:
       template: resources/tasks/templates/nikke/costume_draw_button.png
     action: click
     post_wait: 2000
+    timeout: 5000       # 5秒内未匹配则永久跳过
     next: [click-draw-button]
 
   click-draw-button:
     recognize:
       template: resources/tasks/templates/nikke/draw_button.png
     action: click
+    timeout: 5000
     next: [end-task]

@@ -15,12 +15,16 @@ use tracing_subscriber::{fmt, layer::SubscriberExt, util::SubscriberInitExt, Env
 struct AppState {
     tasks_dir: PathBuf,
     flows_dir: PathBuf,
+    #[allow(dead_code)]
     results: Mutex<Vec<TaskResult>>,
     engine_cmd: Mutex<Option<mpsc::Sender<EngineCommand>>>,
 }
 
 /// Holds the tracing worker guard so the non-blocking writer stays alive.
-struct LogGuard(WorkerGuard);
+struct LogGuard {
+    #[allow(dead_code)]
+    _guard: WorkerGuard,
+}
 
 #[tauri::command]
 fn get_tasks(state: State<AppState>) -> Result<Vec<String>, String> {
@@ -94,7 +98,8 @@ async fn start_execution(
 
     let input = Arc::new(WinApiBackend::new());
     let flows_dir = state.flows_dir.clone();
-    let handle = scheduler::create_engine(task_paths, flows_dir, HashMap::new(), input, hwnd);
+    let resources_dir = state.tasks_dir.parent().unwrap().to_path_buf();
+    let handle = scheduler::create_engine(task_paths, flows_dir, resources_dir, HashMap::new(), input, hwnd);
 
     *state.engine_cmd.lock().unwrap() = Some(handle.cmd_tx.clone());
     handle.cmd_tx.send(EngineCommand::Start).await.map_err(|e| e.to_string())?;
@@ -110,7 +115,7 @@ async fn start_execution(
                 EngineEvent::NodeEntered { task, node } => {
                     let _ = app_clone.emit("engine-event", format!("node_enter:{}:{}", task, node));
                 }
-                EngineEvent::NodeCompleted { task, node } => {
+                EngineEvent::NodeCompleted { task, node, .. } => {
                     let _ = app_clone.emit("engine-event", format!("node_ok:{}:{}", task, node));
                 }
                 EngineEvent::NodeSkipped { task, node, reason } => {
@@ -118,6 +123,12 @@ async fn start_execution(
                 }
                 EngineEvent::TaskCompleted(result) => {
                     let _ = app_clone.emit("engine-event", format!("completed:{}:{:?}", result.task_name, result.state));
+                }
+                EngineEvent::TraceDump(jsonl) => {
+                    let _ = app_clone.emit("engine-event", format!("trace:{}", jsonl));
+                }
+                EngineEvent::Log { task, level, message } => {
+                    let _ = app_clone.emit("engine-event", format!("log:{}:{}:{}", level, task, message));
                 }
             }
         }
@@ -145,8 +156,12 @@ fn main() {
 
     tauri::Builder::default()
         .setup(|app| {
-            // Resolve logs directory using Tauri's app log dir
-            let logs_dir = app.path().app_log_dir().expect("failed to resolve app log dir");
+            // Resolve logs directory next to the executable
+            let exe_dir = std::env::current_exe()
+                .ok()
+                .and_then(|p| p.parent().map(|d| d.to_path_buf()))
+                .unwrap_or_else(|| PathBuf::from("."));
+            let logs_dir = exe_dir.join("logs");
             std::fs::create_dir_all(&logs_dir).expect("failed to create logs directory");
 
             let file_appender = tracing_appender::rolling::daily(&logs_dir, "squire.log");
@@ -154,7 +169,7 @@ fn main() {
 
             let console_layer = fmt::layer().compact();
             let file_layer = fmt::layer().json().with_writer(non_blocking);
-            let filter = EnvFilter::new("squire=debug,info");
+            let filter = EnvFilter::new("info");
 
             tracing_subscriber::registry()
                 .with(filter)
@@ -163,10 +178,10 @@ fn main() {
                 .init();
 
             // Keep the guard alive for the app's lifetime
-            app.manage(LogGuard(guard));
+            app.manage(LogGuard { _guard: guard });
 
             tracing::info!("Starting Squire");
-            tracing::info!("Logs directory: {}", logs_dir.display());
+            tracing::info!("日志目录: {} (JSON格式, 按日滚动)", logs_dir.display());
 
             // Resolve resources directory:
             // In dev mode, use the project root's resources/ directory.

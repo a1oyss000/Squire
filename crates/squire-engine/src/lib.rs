@@ -4,6 +4,7 @@ pub mod executor;
 pub mod recognize;
 pub mod action;
 pub mod trace;
+pub mod event;
 pub mod scheduler;
 pub mod state;
 pub mod vision_impl;

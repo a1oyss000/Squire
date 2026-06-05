@@ -44,10 +44,14 @@ pub enum RecognizeCondition {
     Or(OrCondition),
 }
 
+fn default_threshold() -> f64 { 0.8 }
+
 #[derive(Debug, Clone, Deserialize)]
 pub struct TemplateCondition {
     pub template: String,
     pub roi: Option<[i32; 4]>,
+    #[serde(default = "default_threshold")]
+    pub threshold: f64,
     pub order_by: Option<String>,
     pub index: Option<i32>,
 }

@@ -34,8 +34,8 @@ pub fn find_window(title: &str) -> Result<isize> {
 }
 
 #[cfg(windows)]
-pub fn capture_window(hwnd: isize) -> Result<Image> {
-    match capture_window_wgc(hwnd) {
+pub fn capture_window(hwnd: isize, ctx: &WgcCaptureContext) -> Result<Image> {
+    match capture_window_wgc(hwnd, ctx) {
         Ok(image) => Ok(image),
         Err(e) => {
             tracing::warn!("WGC capture failed ({}), falling back to BitBlt", e);
@@ -44,56 +44,92 @@ pub fn capture_window(hwnd: isize) -> Result<Image> {
     }
 }
 
+/// Persistent D3D11 resources reused across WGC captures.
+///
+/// Creating a D3D11 device per capture exhausts GPU memory and can cause
+/// the DWM to reset window composition (windows minimize). This context
+/// holds the heavy resources once so they're shared across captures.
+///
+/// # Safety
+/// D3D11 devices are internally synchronized when created without
+/// `D3D11_CREATE_DEVICE_SINGLETHREADED`. The contained COM interfaces
+/// are safe to use from multiple threads.
 #[cfg(windows)]
-fn capture_window_wgc(hwnd: isize) -> Result<Image> {
+pub struct WgcCaptureContext {
+    device: windows::Win32::Graphics::Direct3D11::ID3D11Device,
+    context: windows::Win32::Graphics::Direct3D11::ID3D11DeviceContext,
+    d3d_device: windows::Graphics::DirectX::Direct3D11::IDirect3DDevice,
+}
+
+// SAFETY: D3D11 device/context are internally synchronized (created without
+// SINGLETHREADED flag). The WinRT IDirect3DDevice wraps the same D3D device.
+// All access is read-only after initialization (no mutable state in the context).
+#[cfg(windows)]
+unsafe impl Send for WgcCaptureContext {}
+#[cfg(windows)]
+unsafe impl Sync for WgcCaptureContext {}
+
+#[cfg(windows)]
+impl WgcCaptureContext {
+    pub fn new() -> Result<Self> {
+        use windows::core::Interface;
+        use windows::Graphics::DirectX::Direct3D11::IDirect3DDevice;
+        use windows::Win32::Graphics::Direct3D::D3D_DRIVER_TYPE_HARDWARE;
+        use windows::Win32::Graphics::Direct3D11::{
+            D3D11CreateDevice, D3D11_CREATE_DEVICE_BGRA_SUPPORT, D3D11_SDK_VERSION,
+        };
+        use windows::Win32::Graphics::Dxgi::IDXGIDevice;
+        use windows::Win32::System::WinRT::Direct3D11::CreateDirect3D11DeviceFromDXGIDevice;
+
+        unsafe {
+            let mut device = None;
+            let mut context = None;
+            D3D11CreateDevice(
+                None,
+                D3D_DRIVER_TYPE_HARDWARE,
+                None,
+                D3D11_CREATE_DEVICE_BGRA_SUPPORT,
+                None,
+                D3D11_SDK_VERSION,
+                Some(&mut device),
+                None,
+                Some(&mut context),
+            ).map_err(|e| SquireError::Vision(format!("D3D11CreateDevice: {}", e)))?;
+
+            let device = device.unwrap();
+            let context = context.unwrap();
+
+            let dxgi_device: IDXGIDevice = device.cast()
+                .map_err(|e| SquireError::Vision(format!("IDXGIDevice: {}", e)))?;
+            let inspectable = CreateDirect3D11DeviceFromDXGIDevice(&dxgi_device)
+                .map_err(|e| SquireError::Vision(format!("WinRT device: {}", e)))?;
+            let d3d_device: IDirect3DDevice = inspectable.cast()
+                .map_err(|e| SquireError::Vision(format!("IDirect3DDevice: {}", e)))?;
+
+            Ok(WgcCaptureContext { device, context, d3d_device })
+        }
+    }
+}
+
+#[cfg(windows)]
+fn capture_window_wgc(hwnd: isize, ctx: &WgcCaptureContext) -> Result<Image> {
     use windows::core::Interface;
     use windows::Graphics::Capture::{Direct3D11CaptureFramePool, GraphicsCaptureItem};
-    use windows::Graphics::DirectX::Direct3D11::IDirect3DDevice;
     use windows::Graphics::DirectX::DirectXPixelFormat;
     use windows::Win32::Foundation::{HWND, POINT, RECT, WAIT_OBJECT_0};
-    use windows::Win32::Graphics::Direct3D::D3D_DRIVER_TYPE_HARDWARE;
     use windows::Win32::Graphics::Direct3D11::{
-        D3D11CreateDevice, D3D11_CPU_ACCESS_READ,
-        D3D11_CREATE_DEVICE_BGRA_SUPPORT, D3D11_MAP_READ,
+        D3D11_CPU_ACCESS_READ, D3D11_MAP_READ,
         D3D11_MAPPED_SUBRESOURCE,
-        D3D11_SDK_VERSION, D3D11_TEXTURE2D_DESC, D3D11_USAGE_STAGING,
+        D3D11_TEXTURE2D_DESC, D3D11_USAGE_STAGING,
         ID3D11Resource, ID3D11Texture2D,
     };
-    use windows::Win32::Graphics::Dxgi::IDXGIDevice;
     use windows::Win32::System::Threading::{CreateEventW, WaitForSingleObject};
-    use windows::Win32::System::WinRT::Direct3D11::{
-        CreateDirect3D11DeviceFromDXGIDevice, IDirect3DDxgiInterfaceAccess,
-    };
+    use windows::Win32::System::WinRT::Direct3D11::IDirect3DDxgiInterfaceAccess;
     use windows::Win32::System::WinRT::Graphics::Capture::IGraphicsCaptureItemInterop;
     use windows::Win32::UI::WindowsAndMessaging::{GetClientRect, GetWindowRect};
 
     unsafe {
-        // 1. Create D3D11 device
-        let mut device = None;
-        let mut context = None;
-        D3D11CreateDevice(
-            None,
-            D3D_DRIVER_TYPE_HARDWARE,
-            None,
-            D3D11_CREATE_DEVICE_BGRA_SUPPORT,
-            None,
-            D3D11_SDK_VERSION,
-            Some(&mut device),
-            None,
-            Some(&mut context),
-        ).map_err(|e| SquireError::Vision(format!("D3D11CreateDevice: {}", e)))?;
-        let device = device.unwrap();
-        let context = context.unwrap();
-
-        // 2. Bridge to WinRT IDirect3DDevice
-        let dxgi_device: IDXGIDevice = device.cast()
-            .map_err(|e| SquireError::Vision(format!("IDXGIDevice: {}", e)))?;
-        let inspectable = CreateDirect3D11DeviceFromDXGIDevice(&dxgi_device)
-            .map_err(|e| SquireError::Vision(format!("WinRT device: {}", e)))?;
-        let d3d_device: IDirect3DDevice = inspectable.cast()
-            .map_err(|e| SquireError::Vision(format!("IDirect3DDevice: {}", e)))?;
-
-        // 3. Create GraphicsCaptureItem from HWND
+        // 1. Create GraphicsCaptureItem from HWND (per-capture, lightweight)
         let interop: IGraphicsCaptureItemInterop =
             windows::core::factory::<GraphicsCaptureItem, IGraphicsCaptureItemInterop>()
                 .map_err(|e| SquireError::Vision(format!("Interop factory: {}", e)))?;
@@ -102,9 +138,9 @@ fn capture_window_wgc(hwnd: isize) -> Result<Image> {
         let size = item.Size()
             .map_err(|e| SquireError::Vision(format!("Item size: {}", e)))?;
 
-        // 4. Create frame pool and session
+        // 2. Create frame pool and session (per-capture, lightweight)
         let frame_pool = Direct3D11CaptureFramePool::CreateFreeThreaded(
-            &d3d_device,
+            &ctx.d3d_device,
             DirectXPixelFormat::B8G8R8A8UIntNormalized,
             1,
             size,
@@ -116,7 +152,7 @@ fn capture_window_wgc(hwnd: isize) -> Result<Image> {
         let _ = session.SetIsBorderRequired(false);
         let _ = session.SetIsCursorCaptureEnabled(false);
 
-        // 5. Set up event for synchronization
+        // 3. Set up event for synchronization
         let event = CreateEventW(None, true, false, None)
             .map_err(|e| SquireError::Vision(format!("CreateEvent: {}", e)))?;
 
@@ -129,7 +165,7 @@ fn capture_window_wgc(hwnd: isize) -> Result<Image> {
             },
         )).map_err(|e| SquireError::Vision(format!("FrameArrived: {}", e)))?;
 
-        // 6. Start capture and wait for frame
+        // 4. Start capture and wait for frame
         session.StartCapture()
             .map_err(|e| SquireError::Vision(format!("StartCapture: {}", e)))?;
 
@@ -140,7 +176,7 @@ fn capture_window_wgc(hwnd: isize) -> Result<Image> {
             return Err(SquireError::Vision("WGC frame capture timed out".into()));
         }
 
-        // 7. Get frame and extract texture
+        // 5. Get frame and extract texture
         let frame = frame_pool.TryGetNextFrame()
             .map_err(|e| SquireError::Vision(format!("TryGetNextFrame: {}", e)))?;
         let surface = frame.Surface()
@@ -150,7 +186,7 @@ fn capture_window_wgc(hwnd: isize) -> Result<Image> {
         let texture: ID3D11Texture2D = access.GetInterface()
             .map_err(|e| SquireError::Vision(format!("GetInterface: {}", e)))?;
 
-        // 8. Create staging texture and copy
+        // 6. Create staging texture and copy (per-capture — size may change)
         let mut desc = D3D11_TEXTURE2D_DESC::default();
         texture.GetDesc(&mut desc);
         desc.Usage = D3D11_USAGE_STAGING;
@@ -159,7 +195,7 @@ fn capture_window_wgc(hwnd: isize) -> Result<Image> {
         desc.MiscFlags = 0;
 
         let mut staging: Option<ID3D11Texture2D> = None;
-        device.CreateTexture2D(&desc, None, Some(&mut staging))
+        ctx.device.CreateTexture2D(&desc, None, Some(&mut staging))
             .map_err(|e| SquireError::Vision(format!("Staging texture: {}", e)))?;
         let staging = staging.unwrap();
 
@@ -167,11 +203,11 @@ fn capture_window_wgc(hwnd: isize) -> Result<Image> {
             .map_err(|e| SquireError::Vision(format!("staging cast: {}", e)))?;
         let texture_res: ID3D11Resource = texture.cast()
             .map_err(|e| SquireError::Vision(format!("texture cast: {}", e)))?;
-        context.CopyResource(&staging_res, &texture_res);
+        ctx.context.CopyResource(&staging_res, &texture_res);
 
-        // 9. Map and read pixels
+        // 7. Map and read pixels
         let mut mapped = D3D11_MAPPED_SUBRESOURCE::default();
-        context.Map(&staging_res, 0, D3D11_MAP_READ, 0, Some(&mut mapped))
+        ctx.context.Map(&staging_res, 0, D3D11_MAP_READ, 0, Some(&mut mapped))
             .map_err(|e| SquireError::Vision(format!("Map: {}", e)))?;
 
         let width = desc.Width;
@@ -188,15 +224,15 @@ fn capture_window_wgc(hwnd: isize) -> Result<Image> {
             );
         }
 
-        context.Unmap(&staging_res, 0);
+        ctx.context.Unmap(&staging_res, 0);
 
-        // 10. Cleanup
+        // 8. Cleanup
         let _ = session.Close();
         let _ = frame_pool.Close();
         let _ = windows::Win32::Foundation::CloseHandle(event);
 
-        // 11. Crop to client area — WGC captures the full window including
-        //     title bar, but coordinates are used as client-area offsets.
+        // 9. Crop to client area — WGC captures the full window including
+        //    title bar, but coordinates are used as client-area offsets.
         let hwnd_val = HWND(hwnd as *mut _);
         let mut window_rect = RECT::default();
         let mut client_rect = RECT::default();
@@ -410,7 +446,17 @@ pub fn find_window(_title: &str) -> Result<isize> {
 }
 
 #[cfg(not(windows))]
-pub fn capture_window(_hwnd: isize) -> Result<Image> {
+pub struct WgcCaptureContext;
+
+#[cfg(not(windows))]
+impl WgcCaptureContext {
+    pub fn new() -> Result<Self> {
+        Err(SquireError::Vision("Not supported on this platform".into()))
+    }
+}
+
+#[cfg(not(windows))]
+pub fn capture_window(_hwnd: isize, _ctx: &WgcCaptureContext) -> Result<Image> {
     Err(SquireError::Vision("Not supported on this platform".into()))
 }
 

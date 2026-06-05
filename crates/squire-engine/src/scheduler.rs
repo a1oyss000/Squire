@@ -4,6 +4,7 @@ use std::sync::Arc;
 use std::time::Instant;
 
 use tokio::sync::{mpsc, watch};
+use tracing::info;
 
 use crate::executor::{Executor, ExecutorConfig, ExecutorStatus, LoadedTask as ExecTask};
 use crate::loader;
@@ -11,17 +12,12 @@ use crate::state::{TaskResult, TaskState};
 use crate::vision_impl::WgcVisionProvider;
 use squire_input::InputBackend;
 
+// Re-export for backward compatibility (src-tauri depends on these)
+pub use crate::event::EngineEvent;
+
 pub enum EngineCommand {
     Start,
     Cancel,
-}
-
-pub enum EngineEvent {
-    TaskStarted(String),
-    NodeEntered { task: String, node: String },
-    NodeCompleted { task: String, node: String },
-    NodeSkipped { task: String, node: String, reason: String },
-    TaskCompleted(TaskResult),
 }
 
 pub struct EngineHandle {
@@ -32,6 +28,7 @@ pub struct EngineHandle {
 pub fn create_engine(
     task_paths: Vec<PathBuf>,
     flows_dir: PathBuf,
+    resources_dir: PathBuf,
     user_options: HashMap<String, serde_yaml::Value>,
     input: Arc<dyn InputBackend>,
     hwnd: isize,
@@ -42,11 +39,9 @@ pub fn create_engine(
 
     tokio::spawn(async move {
         // Wait for Start command
-        loop {
-            match cmd_rx.recv().await {
-                Some(EngineCommand::Start) => break,
-                Some(EngineCommand::Cancel) | None => return,
-            }
+        match cmd_rx.recv().await {
+            Some(EngineCommand::Start) => {}
+            _ => return,
         }
 
         // Spawn cancel listener
@@ -99,14 +94,27 @@ pub fn create_engine(
             };
 
             let task_name = loaded.name.clone();
-            let vision = WgcVisionProvider::new(hwnd);
+            let vision = match WgcVisionProvider::new(hwnd, resources_dir.clone()) {
+                Ok(v) => v,
+                Err(e) => {
+                    let _ = event_tx.send(EngineEvent::TaskCompleted(TaskResult {
+                        task_name,
+                        state: TaskState::Failed,
+                        message: Some(format!("vision init error: {e}")),
+                        duration_ms: 0,
+                    })).await;
+                    continue;
+                }
+            };
 
+            let executor_event_tx = event_tx.clone();
             let mut executor = Executor::new(
                 loaded,
                 Arc::new(vision),
                 input.clone(),
                 cancel_rx.clone(),
                 ExecutorConfig::default(),
+                executor_event_tx,
             );
 
             let _ = event_tx.send(EngineEvent::TaskStarted(task_name.clone())).await;
@@ -114,6 +122,18 @@ pub fn create_engine(
             let start = Instant::now();
             let executor_status = executor.run().await;
             let duration_ms = start.elapsed().as_millis() as u64;
+
+            // Dump trace — emit as Tauri event AND write to log file
+            let trace_jsonl = executor.dump_trace();
+            if !trace_jsonl.is_empty() {
+                let line_count = trace_jsonl.lines().count();
+                info!(task = %task_name, trace_lines = line_count, "trace dump");
+                // Write each trace line to the structured log file for AI analysis
+                for line in trace_jsonl.lines() {
+                    info!(target: "squire_engine::trace", task = %task_name, "{}", line);
+                }
+                let _ = event_tx.send(EngineEvent::TraceDump(trace_jsonl)).await;
+            }
 
             let (state, message) = match executor_status {
                 ExecutorStatus::Success => (TaskState::Success, None),
